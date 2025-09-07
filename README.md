@@ -152,6 +152,13 @@ This project is developed as part of academic coursework. Please refer to the in
 
 This is an academic project. For questions or suggestions, please contact the team members or supervisor.
 
+## 📧 Contact
+
+For any doubts, questions, or suggestions regarding this project, feel free to reach out:
+
+- **Email**: [laxmikhilnani04@gmail.com](mailto:laxmikhilnani04@gmail.com)
+- **GitHub**: [laxmikhilnani20](https://github.com/laxmikhilnani20)
+
 ---
 
 **Note**: This project was developed as part of PBL (Project Based Learning) coursework in August 2025.
