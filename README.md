@@ -142,7 +142,51 @@ This project is developed as part of academic coursework. Please refer to the in
 
 ## 🤝 Contributing
 
-This is an academic project. For questions or suggestions, please contact the team members or supervisor.
+We welcome contributions to improve this project! Here's how you can collaborate:
+
+### How to Contribute
+
+1. **Fork the repository**
+   ```bash
+   # Click the "Fork" button on GitHub or use GitHub CLI
+   gh repo fork laxmikhilnani20/Finding_Missing_Person
+   ```
+
+2. **Clone your forked repository**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/Finding_Missing_Person.git
+   cd Finding_Missing_Person
+   ```
+
+3. **Create a new branch for your feature**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+4. **Make your changes and commit**
+   ```bash
+   git add .
+   git commit -m "Add your descriptive commit message"
+   ```
+
+5. **Push to your branch**
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+6. **Create a Pull Request**
+   - Go to your forked repository on GitHub
+   - Click "New Pull Request"
+   - Describe your changes and submit
+
+### What You Can Contribute
+- Bug fixes and improvements
+- New features or enhancements
+- Documentation improvements
+- Performance optimizations
+- Code refactoring
+
+Feel free to open an issue first to discuss major changes!
 
 ## 📧 Contact
 
