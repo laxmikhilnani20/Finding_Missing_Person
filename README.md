@@ -6,14 +6,6 @@ A CNN-based framework for automatic person search and detection across multiple 
 
 This project addresses the challenge of efficiently searching and identifying individuals from large volumes of video data. Using state-of-the-art deep learning models, we've developed an intelligent system that can automatically detect and track a target person across multiple videos with high accuracy and efficiency.
 
-## 👥 Team Members
-
-- **Abdullah Master** (22070521001) - 7A
-- **Laxmi Khilnani** (22070521053) - 7A  
-- **Abbas Jabalpurwala** (22070521102) - 7C
-
-**Supervisor:** Dr. Sagar Badhiye, HOD CSE
-
 ## 🎯 Problem Statement
 
 Manual searching and identification of individuals from video sources is:
