@@ -1,0 +1,58 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints
+
+# Data files (keep structure but not uploaded data)
+data/missing_persons/*
+data/detections/*
+!data/missing_persons/.gitkeep
+!data/detections/.gitkeep
+
+# Temporary files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Documentation (optional)
+*.md
+!README.md
+
+# CSV reports
+*.csv
+!config/cameras.json
+
+# Model files (they'll be downloaded)
+data/models/*
+!data/models/.gitkeep
+
+# Input test files
+inputs/

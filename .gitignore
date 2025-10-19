@@ -1,0 +1,79 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Data files (keep structure, not content)
+data/missing_persons/*
+!data/missing_persons/.gitkeep
+
+data/detections/*
+!data/detections/.gitkeep
+
+data/models/*
+!data/models/.gitkeep
+
+data/*.csv
+data/*.log
+
+# Config (keep template, not actual configs)
+config/cameras.json
+
+# Temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker
+.docker/
+
+# Reports and outputs
+output_report.csv
+all_faces_report.csv
+*.pkl
+detection_report_*.csv
+
+# Input test files (optional, comment out if you want to commit these)
+inputs/*.mp4
+inputs/*.avi
+inputs/*.mov
+
+# Keep the input directory structure
+!inputs/.gitkeep
