@@ -118,6 +118,29 @@ cd Finding_Missing_Person
 docker-compose up
 ```
 
+## 🧪 Run the Flask-based Web UI (development)
+
+If you prefer running a lightweight Flask server locally (useful for environments where Streamlit streaming is problematic), a Flask app has been added as `flask_app.py`.
+
+1. Create a virtualenv and install dependencies:
+
+```powershell
+python -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+2. Start the Flask app (development server):
+
+```powershell
+python flask_app.py
+```
+
+3. Open http://localhost:8501 in your browser. The page lists configured cameras and exposes per-camera MJPEG streams. Use the "Start Monitoring" button to begin capturing frames.
+
+Notes:
+- The Flask app streams MJPEG (multipart) frames which many IP cameras and browsers handle well. If you use heavy models (PyTorch + facenet), startup can take a while.
+- For production deployment, consider using gunicorn/uvicorn + a process manager.
+
 **Access the dashboard:**
 ```
 http://localhost:8501

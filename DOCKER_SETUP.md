@@ -39,6 +39,8 @@ The application will be available at:
 http://localhost:8501
 ```
 
+NOTE: The container image has been updated to run the Flask-based web UI (`flask_app.py`) via `gunicorn` instead of the previous Streamlit server. The exposed port (8501) remains the same, so the steps above are unchanged for development and deployment.
+
 ### Step 4: Stop the Application
 Press `Ctrl+C` or run:
 ```bash

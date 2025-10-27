@@ -27,24 +27,73 @@ class IPCamera:
         self.url = url
         self.is_active = False
         self.capture = None
-        self.frame_queue = queue.Queue(maxsize=2)
+        self.frame_queue = queue.Queue(maxsize=4)
         self.thread = None
         self.last_frame_time = None
+        self._last_frame = None
         self.fps = 0
+        
+        # Configure RTSP specific settings
+        self.is_rtsp = url.lower().startswith('rtsp://')
+        if self.is_rtsp:
+            # Extra FFMPEG options for RTSP streams
+            self.stream_options = {
+                cv2.CAP_PROP_HW_ACCELERATION: cv2.VIDEO_ACCELERATION_ANY,  # Enable HW acceleration
+                cv2.CAP_PROP_BUFFERSIZE: 1,                               # Minimal buffering
+                cv2.CAP_PROP_FPS: 30                                      # Target FPS
+            }
         
     def connect(self):
         """Connect to camera stream"""
         try:
-            self.capture = cv2.VideoCapture(self.url)
+            if self.is_rtsp:
+                # For RTSP streams, configure using FFmpeg backend explicitly
+                self.capture = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
+                
+                # Apply RTSP-specific options
+                for prop, value in self.stream_options.items():
+                    self.capture.set(prop, value)
+                
+                # Additional RTSP tuning
+                self.capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'H264'))
+            else:
+                # For non-RTSP streams (like MJPEG)
+                self.capture = cv2.VideoCapture(self.url)
+                self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                self.capture.set(cv2.CAP_PROP_FPS, 30)
+                self.capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+            
             if self.capture.isOpened():
-                self.is_active = True
-                print(f"✅ Connected to {self.name} ({self.url})")
-                return True
+                # Test actual frame reading with timeout
+                start_time = time.time()
+                timeout = 5  # 5 seconds timeout
+                while time.time() - start_time < timeout:
+                    ret, test_frame = self.capture.read()
+                    if ret and test_frame is not None:
+                        self.is_active = True
+                        # Get actual stream properties
+                        actual_fps = self.capture.get(cv2.CAP_PROP_FPS)
+                        codec = int(self.capture.get(cv2.CAP_PROP_FOURCC))
+                        codec_str = ''.join([chr((codec >> 8*i) & 0xFF) for i in range(4)])
+                        
+                        print(f"✅ Connected to {self.name} ({self.url})")
+                        print(f"   Resolution: {test_frame.shape[1]}x{test_frame.shape[0]}")
+                        print(f"   FPS: {actual_fps:.1f}")
+                        print(f"   Codec: {codec_str}")
+                        return True
+                    time.sleep(0.1)
+                
+                print(f"❌ Timeout reading from camera {self.name} ({self.url})")
+                self.capture.release()
+                return False
             else:
                 print(f"❌ Failed to connect to {self.name} ({self.url})")
                 return False
+                
         except Exception as e:
             print(f"❌ Error connecting to {self.name}: {e}")
+            if self.capture:
+                self.capture.release()
             return False
     
     def start_capture(self):
@@ -61,31 +110,75 @@ class IPCamera:
         """Internal method to capture frames continuously"""
         frame_count = 0
         start_time = time.time()
+        last_fps_update = time.time()
+        reconnect_delay = 1.0  # Start with 1 second delay
+        max_reconnect_delay = 5.0
+        failed_reads = 0
+        max_failed_reads = 5  # Maximum consecutive failed reads before reconnecting
         
         while self.is_active:
             try:
-                ret, frame = self.capture.read()
+                if self.is_rtsp:
+                    # For RTSP: Use grabbing strategy to minimize latency
+                    if not self.capture.grab():
+                        failed_reads += 1
+                        if failed_reads >= max_failed_reads:
+                            print(f"⚠️ Multiple failed frame grabs from {self.name} - attempting reconnect in {reconnect_delay}s")
+                            time.sleep(reconnect_delay)
+                            reconnect_delay = min(reconnect_delay * 1.5, max_reconnect_delay)
+                            self.capture.release()
+                            if self.connect():
+                                reconnect_delay = 1.0
+                                failed_reads = 0
+                            continue
+                        time.sleep(0.1)
+                        continue
+                    
+                    ret, frame = self.capture.retrieve()
+                else:
+                    # For non-RTSP: Direct read
+                    ret, frame = self.capture.read()
                 
                 if not ret:
-                    print(f"⚠️ Failed to read frame from {self.name}")
+                    failed_reads += 1
+                    if failed_reads >= max_failed_reads:
+                        print(f"⚠️ Multiple failed reads from {self.name} - attempting reconnect in {reconnect_delay}s")
+                        time.sleep(reconnect_delay)
+                        reconnect_delay = min(reconnect_delay * 1.5, max_reconnect_delay)
+                        self.capture.release()
+                        if self.connect():
+                            reconnect_delay = 1.0
+                            failed_reads = 0
+                        continue
                     time.sleep(0.1)
                     continue
                 
-                # Update FPS
-                frame_count += 1
-                if frame_count % 30 == 0:
-                    elapsed = time.time() - start_time
-                    self.fps = frame_count / elapsed
+                # Reset counters on successful frame
+                failed_reads = 0
+                reconnect_delay = 1.0
                 
-                # Clear old frame and add new one
-                if not self.frame_queue.empty():
+                # Update FPS every second
+                frame_count += 1
+                now = time.time()
+                if now - last_fps_update >= 1.0:
+                    self.fps = frame_count / (now - start_time)
+                    last_fps_update = now
+                
+                # Clear old frame and add new one (non-blocking)
+                while not self.frame_queue.empty():
                     try:
                         self.frame_queue.get_nowait()
                     except queue.Empty:
-                        pass
+                        break
                 
-                self.frame_queue.put(frame)
-                self.last_frame_time = datetime.now()
+                try:
+                    self.frame_queue.put_nowait(frame)
+                    self._last_frame = frame
+                    self.last_frame_time = datetime.now()
+                except queue.Full:
+                    # If queue is full, keep the most recent frame in _last_frame
+                    self._last_frame = frame
+                    continue
                 
             except Exception as e:
                 print(f"❌ Error capturing from {self.name}: {e}")
@@ -93,10 +186,15 @@ class IPCamera:
     
     def get_frame(self):
         """Get latest frame from camera"""
+        # Prefer returning the newest frame without blocking. If queue
+        # is empty, fall back to the last seen frame (reduces blocking
+        # latency and prevents generator stalls).
         try:
-            return self.frame_queue.get(timeout=1)
+            frame = self.frame_queue.get_nowait()
+            self._last_frame = frame
+            return frame
         except queue.Empty:
-            return None
+            return self._last_frame
     
     def stop(self):
         """Stop camera capture"""
