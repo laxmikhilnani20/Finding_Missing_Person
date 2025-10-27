@@ -1,0 +1,21 @@
+services:
+  cctv-flask-app:
+    build:
+      context: .
+      dockerfile: Dockerfile_flask
+    container_name: missing-person-cctv-flask
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FLASK_APP=app_flask.py
+    restart: unless-stopped
+    networks:
+      - cctv-network
+
+networks:
+  cctv-network:
+    driver: bridge
