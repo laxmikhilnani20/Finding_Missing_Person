@@ -1,302 +1,321 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>CCTV Missing Person Detection</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link href="/static/css/styles.css" rel="stylesheet">
-  </head>
-  <body>
-    <nav class="navbar navbar-expand-lg">
-      <div class="container-fluid">
-        <a class="navbar-brand" href="#">🔍 CCTV Missing Person</a>
-        <div class="d-flex gap-2 align-items-center">
-          <span class="small-muted me-3">Port 5000</span>
-          <a class="btn btn-ghost" href="/start">Start</a>
-          <a class="btn btn-ghost" href="/stop">Stop</a>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CCTV Missing Person Detection System</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-video"></i>
+                    <span>CCTV Missing Person Detection</span>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-item">
+                        <i class="fas fa-camera"></i>
+                        <span id="active-cameras">0</span>
+                        <small>Cameras</small>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-users"></i>
+                        <span id="registered-persons">0</span>
+                        <small>Persons</small>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-bell"></i>
+                        <span id="detection-count">0</span>
+                        <small>Detections</small>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
-    </nav>
+    </header>
 
-    <div class="container container-main">
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for cat, msg in messages %}
-            <div class="alert alert-{{ cat }}">{{ msg }}</div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
-
-      <div class="row">
-        <div class="col-lg-4 mb-3">
-          <!-- Quick DroidCam Connect -->
-          <div class="card-modern p-3" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;">
-            <div class="card-header-modern" style="color: white;">📱 Quick DroidCam Connect</div>
-            <div class="mt-2">
-              <div class="mb-2">
-                <label class="form-label small-muted" style="color: rgba(255,255,255,0.8);">Camera Name</label>
-                <input class="form-control bg-transparent text-light border-light" id="quick_camera_name" placeholder="My Phone Camera">
-              </div>
-              <div class="mb-2">
-                <label class="form-label small-muted" style="color: rgba(255,255,255,0.8);">DroidCam IP Address</label>
-                <input class="form-control bg-transparent text-light border-light" id="quick_camera_ip" placeholder="192.168.1.100">
-              </div>
-              <div class="mb-2">
-                <label class="form-label small-muted" style="color: rgba(255,255,255,0.8);">Port (Default: 4747)</label>
-                <input class="form-control bg-transparent text-light border-light" id="quick_camera_port" placeholder="4747" value="4747">
-              </div>
-              <button class="btn btn-light btn-sm w-100" onclick="quickTestConnection()">
-                <i class="fas fa-wifi"></i> Test Connection
-              </button>
-              <button class="btn btn-warning w-100 mt-2" onclick="quickAddCamera()">
-                <i class="fas fa-plus"></i> Add & Stream
-              </button>
-            </div>
-          </div>
-
-          <!-- Live Preview -->
-          <div class="card-modern p-3 mt-3">
-            <div class="card-header-modern">Live Preview</div>
-            <div id="quick-preview" class="mt-2" style="min-height: 250px; background: #1a1a1a; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-              <div class="text-center small-muted">
-                <p>No feed connected</p>
-              </div>
-            </div>
-            <button class="btn btn-sm btn-secondary w-100 mt-2" onclick="connectQuickFeed()">
-              <i class="fas fa-play"></i> View Feed
+    <!-- Alert Banner -->
+    <div id="alert-banner" class="alert-banner hidden">
+        <div class="container">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span id="alert-message"></span>
+            <button class="close-btn" onclick="closeAlert()">
+                <i class="fas fa-times"></i>
             </button>
-          </div>
-
-          <!-- Add Camera (Traditional) -->
-          <div class="card-modern p-3 mt-3">
-            <div class="card-header-modern">Add Camera (Traditional)</div>
-            <div class="mt-2">
-              <form action="/add_camera" method="post">
-                <div class="mb-2">
-                  <label class="form-label small-muted">Camera Name</label>
-                  <input class="form-control bg-transparent text-light" name="camera_name" placeholder="Entrance">
-                </div>
-                <div class="mb-2">
-                  <label class="form-label small-muted">Camera URL</label>
-                  <input class="form-control bg-transparent text-light" name="camera_url" placeholder="http://192.168.x.x:8080/video">
-                </div>
-                <button class="btn btn-primary" type="submit">Add Camera</button>
-              </form>
-            </div>
-          </div>
-
-          <div class="card-modern p-3 mt-3">
-            <div class="card-header-modern">Add Missing Person</div>
-            <div class="mt-2">
-              <form action="/add_person" method="post" enctype="multipart/form-data">
-                <div class="mb-2">
-                  <label class="form-label small-muted">Person Name</label>
-                  <input class="form-control bg-transparent text-light" name="person_name" placeholder="John Doe">
-                </div>
-                <div class="mb-2">
-                  <label class="form-label small-muted">Photo</label>
-                  <input class="form-control bg-transparent text-light" type="file" name="person_image" accept="image/*">
-                </div>
-                <button class="btn btn-primary" type="submit">Add Person</button>
-              </form>
-            </div>
-          </div>
-
-          <div class="card-modern p-3 mt-3">
-            <div class="card-header-modern">Registered Persons</div>
-            <div class="mt-2 people-list">
-              {% if persons %}
-                {% for name, path in persons.items() %}
-                  <div class="d-flex align-items-center gap-3 mb-2">
-                    <img src="/{{ path }}" alt="{{ name }}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
-                    <div>
-                      <div class="fw-bold">{{ name }}</div>
-                      <div class="small-muted">Registered</div>
-                    </div>
-                  </div>
-                {% endfor %}
-              {% else %}
-                <p class="small-muted">No persons registered yet.</p>
-              {% endif %}
-            </div>
-          </div>
         </div>
-
-        <div class="col-lg-8">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <div>
-              <h5 class="mb-0">Live Camera Feeds</h5>
-              <div class="small-muted">Active cameras shown below</div>
-            </div>
-            <div class="text-end">
-              <div class="stat-pill">Detections: {{ detection_count }}</div>
-              <div class="small-muted mt-1">Monitoring: {{ 'On' if monitoring else 'Off' }}</div>
-            </div>
-          </div>
-
-          {% if cameras %}
-            <div class="camera-grid">
-              {% for cid, info in cameras.items() %}
-                <div class="camera-card card-modern p-3">
-                  <div class="meta mb-2">
-                    <div class="left">
-                      <div>
-                        <div class="fw-bold">{{ info.name }}</div>
-                        <div class="small-muted">
-                          {% if info.ip_address %}
-                            {{ info.ip_address }}:{{ info.port }}
-                          {% else %}
-                            {{ info.url }}
-                          {% endif %}
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <span id="alert-{{ cid }}" class="badge-alert" style="display:none;margin-right:8px"></span>
-                      <a class="btn btn-sm btn-ghost" href="/remove_camera/{{ cid }}">Remove</a>
-                    </div>
-                  </div>
-                  <div>
-                    <img class="stream-img" src="{{ url_for('video_feed', camera_id=cid) }}" alt="Stream for {{ info.name }}">
-                  </div>
-                  <div class="d-flex justify-content-between align-items-center mt-2 small-muted">
-                    <div>FPS: {{ info.fps }}</div>
-                    <div>Last: {{ info.last_frame if info.last_frame else '-' }}</div>
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <div class="card-modern p-4 text-center small-muted">No cameras added yet. Add a camera to get started.</div>
-          {% endif %}
-        </div>
-      </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-      let quickCameraId = null;
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="container">
+            <div class="dashboard">
+                <!-- Sidebar -->
+                <aside class="sidebar">
+                    <!-- Camera Management -->
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-video"></i>
+                            Camera Management
+                        </div>
+                        <div class="card-body">
+                            <button class="btn btn-primary btn-block" onclick="openModal('camera-modal')">
+                                <i class="fas fa-plus"></i> Add Camera
+                            </button>
+                            <div id="camera-list" class="list-group mt-3">
+                                <!-- Cameras will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
 
-      // Test Quick Connection
-      async function quickTestConnection() {
-        const ip = document.getElementById('quick_camera_ip').value.trim();
-        const port = document.getElementById('quick_camera_port').value || '4747';
-        
-        if (!ip) {
-          alert('Please enter DroidCam IP address');
-          return;
-        }
+                    <!-- Missing Persons -->
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <i class="fas fa-user-friends"></i>
+                            Missing Persons
+                        </div>
+                        <div class="card-body">
+                            <button class="btn btn-primary btn-block" onclick="openModal('person-modal')">
+                                <i class="fas fa-user-plus"></i> Add Person
+                            </button>
+                            <div id="person-list" class="list-group mt-3">
+                                <!-- Persons will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
 
-        const btn = event.target;
-        btn.disabled = true;
-        btn.innerText = 'Testing...';
+                    <!-- Settings -->
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <i class="fas fa-cog"></i>
+                            Settings
+                        </div>
+                        <div class="card-body">
+                            <label>Confidence Threshold</label>
+                            <input type="range" id="threshold-slider" min="0.5" max="0.95" step="0.05" value="0.65" class="slider">
+                            <div class="threshold-value">
+                                <span id="threshold-value">0.65</span>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
 
-        try {
-          const response = await fetch('/api/cameras/test', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ip_address: ip, port: parseInt(port) })
-          });
-          const data = await response.json();
-          
-          if (data.success) {
-            alert('✅ Connection successful!');
-            quickCameraId = `temp_${Date.now()}`;
-          } else {
-            alert('❌ Connection failed: ' + (data.message || 'Unknown error'));
-          }
-        } catch (err) {
-          alert('❌ Error: ' + err.message);
-        } finally {
-          btn.disabled = false;
-          btn.innerText = 'Test Connection';
-        }
-      }
+                <!-- Main Area -->
+                <main class="main-area">
+                    <!-- Control Panel -->
+                    <div class="control-panel">
+                        <button id="start-btn" class="btn btn-success" onclick="startMonitoring()">
+                            <i class="fas fa-play"></i> Start Monitoring
+                        </button>
+                        <button id="stop-btn" class="btn btn-danger" onclick="stopMonitoring()" disabled>
+                            <i class="fas fa-stop"></i> Stop Monitoring
+                        </button>
+                        <button class="btn btn-info" onclick="exportReport()">
+                            <i class="fas fa-download"></i> Export Report
+                        </button>
+                        <button class="btn btn-secondary" onclick="showTab('detections')">
+                            <i class="fas fa-list"></i> View Log
+                        </button>
+                    </div>
 
-      // Quick Add Camera
-      async function quickAddCamera() {
-        const name = document.getElementById('quick_camera_name').value.trim();
-        const ip = document.getElementById('quick_camera_ip').value.trim();
-        const port = document.getElementById('quick_camera_port').value || '4747';
+                    <!-- Tabs -->
+                    <div class="tabs">
+                        <button class="tab-btn active" onclick="showTab('monitoring')">
+                            <i class="fas fa-video"></i> Live Monitoring
+                        </button>
+                        <button class="tab-btn" onclick="showTab('detections')">
+                            <i class="fas fa-list"></i> Detection Log
+                        </button>
+                        <button class="tab-btn" onclick="showTab('about')">
+                            <i class="fas fa-info-circle"></i> About
+                        </button>
+                    </div>
 
-        if (!name || !ip) {
-          alert('Please enter camera name and IP address');
-          return;
-        }
+                    <!-- Tab Content -->
+                    <div class="tab-content">
+                        <!-- Monitoring Tab -->
+                        <div id="monitoring-tab" class="tab-pane active">
+                            <div id="no-monitoring" class="empty-state">
+                                <i class="fas fa-video-slash"></i>
+                                <h3>No Active Monitoring</h3>
+                                <p>Click "Start Monitoring" to begin detection</p>
+                            </div>
+                            <div id="camera-feeds" class="camera-grid">
+                                <!-- Camera feeds will be displayed here -->
+                            </div>
+                        </div>
 
-        try {
-          const response = await fetch('/api/cameras/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, ip_address: ip, port: parseInt(port) })
-          });
-          const data = await response.json();
+                        <!-- Detections Tab -->
+                        <div id="detections-tab" class="tab-pane">
+                            <div class="detection-stats">
+                                <div class="stat-card">
+                                    <h3 id="total-detections">0</h3>
+                                    <p>Total Detections</p>
+                                </div>
+                                <div class="stat-card">
+                                    <h3 id="unique-persons-detected">0</h3>
+                                    <p>Unique Persons</p>
+                                </div>
+                                <div class="stat-card">
+                                    <h3 id="avg-confidence">0%</h3>
+                                    <p>Avg Confidence</p>
+                                </div>
+                            </div>
 
-          if (data.success) {
-            alert('✅ ' + data.message);
-            quickCameraId = data.camera_id;
-            document.getElementById('quick_camera_name').value = '';
-            document.getElementById('quick_camera_ip').value = '';
-            document.getElementById('quick_camera_port').value = '4747';
-            // Reload page to show new camera
-            setTimeout(() => location.reload(), 1000);
-          } else {
-            alert('❌ ' + data.message);
-          }
-        } catch (err) {
-          alert('❌ Error: ' + err.message);
-        }
-      }
+                            <div class="table-container">
+                                <table class="detection-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <th>Person</th>
+                                            <th>Camera</th>
+                                            <th>Confidence</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detection-table-body">
+                                        <!-- Detection rows will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
 
-      // Connect Quick Feed
-      function connectQuickFeed() {
-        const ip = document.getElementById('quick_camera_ip').value.trim();
-        const port = document.getElementById('quick_camera_port').value || '4747';
+                            <div id="recent-images" class="recent-images">
+                                <h3>Recent Detections</h3>
+                                <div id="recent-images-grid" class="images-grid">
+                                    <!-- Recent detection images will be displayed here -->
+                                </div>
+                            </div>
+                        </div>
 
-        if (!ip) {
-          alert('Please enter DroidCam IP address');
-          return;
-        }
+                        <!-- About Tab -->
+                        <div id="about-tab" class="tab-pane">
+                            <div class="about-content">
+                                <h2><i class="fas fa-info-circle"></i> About This System</h2>
+                                
+                                <div class="about-section">
+                                    <h3>🔍 CCTV-Based Missing Person Detection System</h3>
+                                    <p>This system uses <strong>real-time face recognition</strong> to detect missing persons across multiple IP camera streams.</p>
+                                </div>
 
-        const preview = document.getElementById('quick-preview');
-        const streamUrl = `http://${ip}:${port}/video`;
+                                <div class="about-section">
+                                    <h3>✨ Features</h3>
+                                    <ul>
+                                        <li><i class="fas fa-camera"></i> Multi-camera support via IP addresses</li>
+                                        <li><i class="fas fa-user-friends"></i> Multiple missing person profiles</li>
+                                        <li><i class="fas fa-brain"></i> Real-time face detection and matching</li>
+                                        <li><i class="fas fa-bell"></i> Instant alerts with camera location</li>
+                                        <li><i class="fas fa-clipboard-list"></i> Comprehensive detection logging</li>
+                                        <li><i class="fas fa-file-export"></i> Exportable reports</li>
+                                    </ul>
+                                </div>
 
-        preview.innerHTML = `
-          <div style="width: 100%; height: 100%; border-radius: 8px; overflow: hidden;">
-            <img src="${streamUrl}" style="width: 100%; height: 100%; object-fit: cover;" 
-                 onerror="this.parentElement.innerHTML='<div class=\\'text-center small-muted\\' style=\\'padding: 20px;\\'>Failed to load stream</div>'">
-          </div>
-        `;
-      }
+                                <div class="about-section">
+                                    <h3>🛠️ Tech Stack</h3>
+                                    <ul>
+                                        <li><strong>Face Recognition:</strong> MTCNN + InceptionResnetV1 (FaceNet)</li>
+                                        <li><strong>Framework:</strong> Flask + Socket.IO</li>
+                                        <li><strong>Computer Vision:</strong> OpenCV</li>
+                                        <li><strong>Deployment:</strong> Docker</li>
+                                    </ul>
+                                </div>
 
-      // Server-Sent Events listener for live detection badges
-      try {
-        const es = new EventSource('/events');
-        es.onmessage = function(e) {
-          try {
-            const data = JSON.parse(e.data);
-            if (data.type === 'detection') {
-              const cid = data.camera_id;
-              const el = document.getElementById('alert-' + cid);
-              if (el) {
-                el.innerText = `🚨 ${data.person_name} (${(data.similarity * 100).toFixed(1)}%)`;
-                el.style.display = 'inline-block';
-                // flash card border
-                const card = el.closest('.camera-card');
-                if (card) {
-                  const orig = card.style.boxShadow;
-                  card.style.boxShadow = '0 0 0 4px rgba(255,59,48,0.10)';
-                  setTimeout(() => { card.style.boxShadow = orig; }, 1200);
-                }
-                setTimeout(() => { el.style.display = 'none'; }, 8000);
-              }
-            }
-          } catch (err) { console.warn('SSE data parse error', err); }
-        };
-        es.onerror = function(err) { console.warn('SSE connection error', err); };
-      } catch (e) { console.warn('SSE not supported', e); }
-    </script>
-  </body>
+                                <div class="about-section">
+                                    <h3>📖 How to Use</h3>
+                                    <ol>
+                                        <li>Add IP cameras with their stream URLs</li>
+                                        <li>Register missing persons with their photos</li>
+                                        <li>Click "Start Monitoring" to begin detection</li>
+                                        <li>System will alert when a match is found</li>
+                                    </ol>
+                                </div>
+
+                                <div class="about-footer">
+                                    <p><strong>Developed for PBL Project - 2025</strong></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camera Modal -->
+    <div id="camera-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-video"></i> Add New Camera</h2>
+                <button class="close-btn" onclick="closeModal('camera-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Camera Name</label>
+                    <input type="text" id="camera-name" class="form-control" placeholder="e.g., Entrance">
+                </div>
+                <div class="form-group">
+                    <label>IP Camera URL</label>
+                    <input type="text" id="camera-url" class="form-control" placeholder="http://192.168.1.100:8080/video">
+                    <small>Supported: HTTP, HTTPS, RTSP streams</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('camera-modal')">Cancel</button>
+                <button class="btn btn-info" onclick="testCamera()">Test Connection</button>
+                <button class="btn btn-primary" onclick="addCamera()">Add Camera</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Person Modal -->
+    <div id="person-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-user-plus"></i> Add Missing Person</h2>
+                <button class="close-btn" onclick="closeModal('person-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Person Name</label>
+                    <input type="text" id="person-name" class="form-control" placeholder="e.g., John Doe">
+                </div>
+                <div class="form-group">
+                    <label>Upload Photo</label>
+                    <input type="file" id="person-image" class="form-control" accept="image/*">
+                    <small>Clear, front-facing photo recommended</small>
+                </div>
+                <div id="image-preview" class="image-preview"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('person-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="addPerson()">Add Person</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Viewer Modal -->
+    <div id="image-modal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2><i class="fas fa-image"></i> Detection Image</h2>
+                <button class="close-btn" onclick="closeModal('image-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <img id="modal-image" src="" alt="Detection" class="full-image">
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
 </html>
