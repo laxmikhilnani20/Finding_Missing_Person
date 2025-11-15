@@ -5,13 +5,17 @@ services:
       dockerfile: Dockerfile_flask
     container_name: missing-person-cctv-flask
     ports:
-      - "5000:5000"
+      - "5001:5001"
     volumes:
       - ./data:/app/data
       - ./config:/app/config
+    devices:
+      - /dev/video0:/dev/video0
+    privileged: true
     environment:
       - PYTHONUNBUFFERED=1
       - FLASK_APP=app_flask.py
+      - FLASK_PORT=5001
     restart: unless-stopped
     networks:
       - cctv-network

@@ -34,6 +34,13 @@ docker-compose up
 
 ## 📱 IP Camera URLs
 
+### Built-in Webcam
+```
+Built-in webcam: 0
+External webcam 1: 1
+External webcam 2: 2
+```
+
 ### Smartphone as IP Camera
 
 **Android (IP Webcam App):**

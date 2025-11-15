@@ -100,10 +100,11 @@ docker-compose -f docker_compose_flask.yml up
 
 ### **Access the Dashboard**
 ```
-🌐 http://localhost:5000
+🌐 http://localhost:5001
 ```
 
 > **🎥 First Time Setup**: Add cameras → Register missing persons → Start monitoring!
+> **💻 Webcam Support**: Use device index `0` for built-in webcam, `1` for external webcam
 
 ---
 

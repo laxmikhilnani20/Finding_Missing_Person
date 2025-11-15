@@ -81,11 +81,12 @@ class FaceRecognitionEngine:
             query_embeddings: dict of {person_name: embedding_tensor}
             
         Returns:
-            list: Detected matches with format:
+            list: Detected matches and unknown faces with format:
                   [{
-                      'person_name': str,
+                      'person_name': str (or 'Unknown Person'),
                       'bbox': [x1, y1, x2, y2],
-                      'similarity': float
+                      'similarity': float,
+                      'is_match': bool
                   }]
         """
         # Convert BGR to RGB
@@ -112,8 +113,26 @@ class FaceRecognitionEngine:
         
         matches = []
         
+        # Ensure we have matching boxes and embeddings
+        num_faces = min(len(boxes), len(face_embeddings))
+        
         # Compare each detected face with all query embeddings
-        for i, (box, face_embedding) in enumerate(zip(boxes, face_embeddings)):
+        for i in range(num_faces):
+            box = boxes[i]
+            face_embedding = face_embeddings[i]
+            
+            # Validate bbox format
+            if not isinstance(box, (list, tuple, np.ndarray)) or len(box) != 4:
+                print(f"⚠️ Invalid bbox format: {box} (type: {type(box)}), skipping face {i}")
+                continue
+            
+            # Safely convert bbox to list of ints
+            try:
+                bbox_list = [int(b) for b in box]
+            except (TypeError, ValueError) as e:
+                print(f"⚠️ Error converting bbox to int list: {box}, error: {e}")
+                continue
+            
             best_match = None
             best_similarity = 0.0
             
@@ -128,19 +147,28 @@ class FaceRecognitionEngine:
                     best_similarity = similarity
                     best_match = person_name
             
-            # Check if match exceeds threshold
+            # Add to results - mark as match or unknown
             if best_similarity >= self.similarity_threshold:
                 matches.append({
                     'person_name': best_match,
-                    'bbox': [int(b) for b in box],
-                    'similarity': best_similarity
+                    'bbox': bbox_list,
+                    'similarity': best_similarity,
+                    'is_match': True
+                })
+            else:
+                # Add as unknown person to show detection is working
+                matches.append({
+                    'person_name': 'Unknown Person',
+                    'bbox': bbox_list,
+                    'similarity': best_similarity,
+                    'is_match': False
                 })
         
         return matches
     
     def draw_matches(self, frame, matches):
         """
-        Draw bounding boxes and labels on frame
+        Draw bounding boxes and labels on frame with color coding
         
         Args:
             frame: numpy array (BGR format)
@@ -152,21 +180,39 @@ class FaceRecognitionEngine:
         annotated_frame = frame.copy()
         
         for match in matches:
-            x1, y1, x2, y2 = match['bbox']
+            # Validate bbox format before unpacking
+            bbox = match.get('bbox')
+            if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+                print(f"⚠️ Skipping invalid bbox in draw_matches: {bbox}")
+                continue
+            
+            x1, y1, x2, y2 = bbox
             person_name = match['person_name']
             similarity = match['similarity']
+            is_match = match.get('is_match', True)
             
-            # Draw bounding box (red for alert)
-            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
+            # Color coding: RED for known persons, YELLOW for unknown faces
+            if is_match:
+                box_color = (0, 0, 255)  # RED - Known person (BGR format)
+                label_bg_color = (0, 0, 255)
+                thickness = 3
+                label = f"✓ {person_name}: {similarity:.2%}"
+            else:
+                box_color = (0, 255, 255)  # YELLOW - Unknown person (BGR format)
+                label_bg_color = (0, 200, 200)
+                thickness = 2
+                label = f"? Unknown: {similarity:.2%}"
+            
+            # Draw bounding box
+            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), box_color, thickness)
             
             # Draw label background
-            label = f"{person_name}: {similarity:.2%}"
-            label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+            label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
             cv2.rectangle(
                 annotated_frame,
                 (x1, y1 - label_size[1] - 10),
-                (x1 + label_size[0], y1),
-                (0, 0, 255),
+                (x1 + label_size[0] + 10, y1),
+                label_bg_color,
                 -1
             )
             
@@ -174,9 +220,9 @@ class FaceRecognitionEngine:
             cv2.putText(
                 annotated_frame,
                 label,
-                (x1, y1 - 5),
+                (x1 + 5, y1 - 5),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
+                0.6,
                 (255, 255, 255),
                 2
             )

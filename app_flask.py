@@ -74,62 +74,90 @@ def load_missing_persons():
 
 def process_camera_stream(camera_id):
     """Process individual camera stream and emit updates"""
+    frame_skip_counter = 0
+    
     while app_state.monitoring:
         try:
+            # Check if we should exit (monitoring stopped)
+            if not app_state.monitoring:
+                print(f"🛑 Exiting processing thread for camera {camera_id}")
+                break
+            
             frame = app_state.camera_manager.get_frame(camera_id)
             
             if frame is not None:
-                # Detect faces
-                matches = app_state.face_engine.detect_and_match(
-                    frame,
-                    app_state.query_embeddings
-                )
+                # Process every frame for display, but skip AI detection on some frames
+                # to prevent backlog when processing is slower than capture
+                frame_skip_counter += 1
+                should_detect = (frame_skip_counter % 2 == 0) or len(app_state.query_embeddings) == 0
                 
-                # Draw matches
-                if matches:
-                    frame = app_state.face_engine.draw_matches(frame, matches)
-                    frame = add_alert_banner(
+                matches = []
+                if should_detect and app_state.query_embeddings:
+                    # Detect faces
+                    matches = app_state.face_engine.detect_and_match(
                         frame,
-                        f"🚨 {matches[0]['person_name'].upper()} DETECTED!"
+                        app_state.query_embeddings
                     )
+                
+                # Draw matches (all faces - known and unknown)
+                if matches:
+                    try:
+                        frame = app_state.face_engine.draw_matches(frame, matches)
+                    except Exception as e:
+                        print(f"⚠️ Error drawing matches: {e}")
+                        print(f"⚠️ Matches data: {matches}")
                     
-                    # Log detection
-                    cam_info = app_state.camera_manager.get_camera_info(camera_id)
-                    for match in matches:
-                        app_state.db_manager.log_detection(
-                            match['person_name'],
-                            camera_id,
-                            cam_info['name'],
-                            match['similarity'],
-                            frame
+                    # Check if there are any known persons (not just unknown faces)
+                    known_matches = [m for m in matches if m.get('is_match', False)]
+                    
+                    if known_matches:
+                        # Add alert banner only for known persons
+                        frame = add_alert_banner(
+                            frame,
+                            f"🚨 {known_matches[0]['person_name'].upper()} DETECTED!"
                         )
-                        app_state.detection_count += 1
-                        app_state.last_detection = datetime.now()
                         
-                        # Emit detection alert
-                        socketio.emit('detection_alert', {
-                            'person_name': match['person_name'],
-                            'camera_name': cam_info['name'],
-                            'similarity': match['similarity'],
-                            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        })
+                        # Log detection only for known persons
+                        cam_info = app_state.camera_manager.get_camera_info(camera_id)
+                        for match in known_matches:
+                            app_state.db_manager.log_detection(
+                                match['person_name'],
+                                camera_id,
+                                cam_info['name'],
+                                match['similarity'],
+                                frame
+                            )
+                            app_state.detection_count += 1
+                            app_state.last_detection = datetime.now()
+                            
+                            # Emit detection alert
+                            socketio.emit('detection_alert', {
+                                'person_name': match['person_name'],
+                                'camera_name': cam_info['name'],
+                                'similarity': match['similarity'],
+                                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            })
                 
                 # Add timestamp overlay
                 cam_info = app_state.camera_manager.get_camera_info(camera_id)
                 frame = add_timestamp_overlay(frame, cam_info['name'])
                 
                 # Convert frame to base64
-                _, buffer = cv2.imencode('.jpg', frame)
+                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 frame_base64 = base64.b64encode(buffer).decode('utf-8')
                 
                 # Emit frame update
+                # has_detection only true for known persons, not unknown faces
+                known_persons_detected = any(m.get('is_match', False) for m in matches) if matches else False
+                
                 socketio.emit('frame_update', {
                     'camera_id': camera_id,
                     'frame': frame_base64,
-                    'has_detection': len(matches) > 0
+                    'has_detection': known_persons_detected
                 })
-            
-            time.sleep(0.1)  # Adjust for desired FPS
+            else:
+                # No frame available, wait briefly before retrying
+                time.sleep(0.05)
             
         except Exception as e:
             print(f"❌ Error processing camera {camera_id}: {e}")
@@ -292,10 +320,26 @@ def start_monitoring():
 @app.route('/api/monitoring/stop', methods=['POST'])
 def stop_monitoring():
     """Stop monitoring"""
-    app_state.camera_manager.stop_all()
+    print("🛑 Stopping monitoring...")
+    
+    # Set monitoring flag to false first
     app_state.monitoring = False
+    
+    # Give threads time to exit gracefully
+    time.sleep(0.5)
+    
+    # Stop all cameras
+    app_state.camera_manager.stop_all()
+    
+    # Wait for threads to finish
+    for thread in app_state.monitoring_threads:
+        if thread.is_alive():
+            thread.join(timeout=2.0)
+    
+    # Clear the thread list
     app_state.monitoring_threads.clear()
     
+    print("✅ Monitoring stopped successfully")
     return jsonify({'success': True, 'message': 'Monitoring stopped'})
 
 @app.route('/api/monitoring/status', methods=['GET'])
@@ -379,4 +423,7 @@ def handle_disconnect():
     print('Client disconnected')
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
+    import os
+    port = int(os.environ.get('FLASK_PORT', 5001))
+    print(f"🚀 Starting Flask server on http://0.0.0.0:{port}")
+    socketio.run(app, host='0.0.0.0', port=port, debug=True, allow_unsafe_werkzeug=True)

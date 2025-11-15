@@ -148,8 +148,8 @@ def add_alert_banner(frame, message="🚨 PERSON DETECTED!", blink=True):
     # Draw red banner
     cv2.rectangle(alert_frame, (0, height - 60), (width, height), (0, 0, 255), -1)
     
-    # Add text
-    text_size = cv2.getTextSize(message, cv2.FONT_HERSHEY_BOLD, 1.0, 2)[0]
+    # Add text (using FONT_HERSHEY_SIMPLEX which is reliable)
+    text_size = cv2.getTextSize(message, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)[0][0]
     text_x = (width - text_size[0]) // 2
     text_y = height - 20
     
@@ -157,7 +157,7 @@ def add_alert_banner(frame, message="🚨 PERSON DETECTED!", blink=True):
         alert_frame,
         message,
         (text_x, text_y),
-        cv2.FONT_HERSHEY_BOLD,
+        cv2.FONT_HERSHEY_SIMPLEX,
         1.0,
         (255, 255, 255),
         2
@@ -168,15 +168,23 @@ def add_alert_banner(frame, message="🚨 PERSON DETECTED!", blink=True):
 
 def validate_ip_url(url):
     """
-    Validate IP camera URL format
+    Validate IP camera URL format or webcam device
     
     Args:
-        url (str): Camera URL
+        url (str): Camera URL or device index/path
         
     Returns:
         bool: Whether URL is valid
     """
     url = url.strip()
+    
+    # Check if it's a webcam device index (0, 1, 2, etc.)
+    if url.isdigit():
+        return True
+    
+    # Check if it's a device path (/dev/video0, /dev/video1, etc.)
+    if url.startswith('/dev/video'):
+        return True
     
     # Check if URL starts with http://, https://, or rtsp://
     valid_protocols = ['http://', 'https://', 'rtsp://']

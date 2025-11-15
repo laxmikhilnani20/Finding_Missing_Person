@@ -35,8 +35,16 @@ class IPCamera:
     def connect(self):
         """Connect to camera stream"""
         try:
-            self.capture = cv2.VideoCapture(self.url)
+            # Handle webcam device index (convert string to int)
+            if isinstance(self.url, str) and self.url.isdigit():
+                device_index = int(self.url)
+                self.capture = cv2.VideoCapture(device_index)
+            else:
+                self.capture = cv2.VideoCapture(self.url)
+            
+            # Set buffer size to 1 for lower latency
             if self.capture.isOpened():
+                self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 self.is_active = True
                 print(f"✅ Connected to {self.name} ({self.url})")
                 return True
@@ -64,6 +72,11 @@ class IPCamera:
         
         while self.is_active:
             try:
+                # Check if capture is still valid
+                if not self.capture or not self.capture.isOpened():
+                    print(f"⚠️ Capture device closed for {self.name}, exiting thread")
+                    break
+                
                 ret, frame = self.capture.read()
                 
                 if not ret:
@@ -92,18 +105,38 @@ class IPCamera:
                 time.sleep(1)
     
     def get_frame(self):
-        """Get latest frame from camera"""
+        """Get latest frame from camera (non-blocking, always returns newest)"""
         try:
-            return self.frame_queue.get(timeout=1)
-        except queue.Empty:
+            # Get the most recent frame without blocking
+            frame = None
+            # Drain queue to get only the latest frame
+            while not self.frame_queue.empty():
+                try:
+                    frame = self.frame_queue.get_nowait()
+                except queue.Empty:
+                    break
+            return frame
+        except Exception as e:
+            print(f"❌ Error getting frame from {self.name}: {e}")
             return None
     
     def stop(self):
         """Stop camera capture"""
+        print(f"⏹️ Stopping {self.name}...")
         self.is_active = False
+        
+        # Wait for thread to finish (with timeout)
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=2.0)
+        
+        # Release capture after thread has stopped
         if self.capture:
-            self.capture.release()
-        print(f"⏹️ Stopped {self.name}")
+            try:
+                self.capture.release()
+            except Exception as e:
+                print(f"⚠️ Error releasing capture for {self.name}: {e}")
+        
+        print(f"✅ {self.name} stopped successfully")
     
     def get_status(self):
         """Get camera status"""
@@ -212,13 +245,19 @@ class IPCameraManager:
         Test if camera URL is accessible
         
         Args:
-            url (str): Camera stream URL
+            url (str): Camera stream URL or device index
             
         Returns:
             bool: Connection successful
         """
         try:
-            cap = cv2.VideoCapture(url)
+            # Handle webcam device index
+            if isinstance(url, str) and url.isdigit():
+                device_index = int(url)
+                cap = cv2.VideoCapture(device_index)
+            else:
+                cap = cv2.VideoCapture(url)
+            
             if cap.isOpened():
                 ret, _ = cap.read()
                 cap.release()

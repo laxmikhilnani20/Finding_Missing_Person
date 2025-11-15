@@ -36,8 +36,22 @@ docker-compose up
 
 The application will be available at:
 ```
-http://localhost:8501
+http://localhost:5001
 ```
+
+### Using Built-in Webcam
+
+To use your computer's webcam:
+
+1. **Add Camera in the Dashboard**
+   - Camera Name: `My Webcam`
+   - Camera URL: `0` (for built-in webcam) or `1` (for external webcam)
+
+2. **Multiple Webcams**
+   - Built-in webcam: `0`
+   - First external webcam: `1`
+   - Second external webcam: `2`
+   - And so on...
 
 ### Step 4: Stop the Application
 Press `Ctrl+C` or run:
