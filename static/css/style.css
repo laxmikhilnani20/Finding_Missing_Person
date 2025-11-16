@@ -565,6 +565,22 @@ body {
     background: var(--dark-bg);
 }
 
+.detection-thumbnail {
+    width: 80px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: 2px solid var(--border-color);
+}
+
+.detection-thumbnail:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 8px rgba(37, 99, 235, 0.5);
+    border-color: var(--primary-color);
+}
+
 .confidence-badge {
     display: inline-block;
     padding: 0.25rem 0.75rem;

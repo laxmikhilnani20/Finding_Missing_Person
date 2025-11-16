@@ -74,7 +74,6 @@ def load_missing_persons():
 
 def process_camera_stream(camera_id):
     """Process individual camera stream and emit updates"""
-    frame_skip_counter = 0
     
     while app_state.monitoring:
         try:
@@ -86,14 +85,9 @@ def process_camera_stream(camera_id):
             frame = app_state.camera_manager.get_frame(camera_id)
             
             if frame is not None:
-                # Process every frame for display, but skip AI detection on some frames
-                # to prevent backlog when processing is slower than capture
-                frame_skip_counter += 1
-                should_detect = (frame_skip_counter % 2 == 0) or len(app_state.query_embeddings) == 0
-                
                 matches = []
-                if should_detect and app_state.query_embeddings:
-                    # Detect faces
+                if app_state.query_embeddings:
+                    # Detect faces on every frame for smooth detection
                     matches = app_state.face_engine.detect_and_match(
                         frame,
                         app_state.query_embeddings
@@ -142,8 +136,8 @@ def process_camera_stream(camera_id):
                 cam_info = app_state.camera_manager.get_camera_info(camera_id)
                 frame = add_timestamp_overlay(frame, cam_info['name'])
                 
-                # Convert frame to base64
-                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                # Convert frame to base64 with lower quality for faster encoding
+                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 frame_base64 = base64.b64encode(buffer).decode('utf-8')
                 
                 # Emit frame update
@@ -156,8 +150,8 @@ def process_camera_stream(camera_id):
                     'has_detection': known_persons_detected
                 })
             else:
-                # No frame available, wait briefly before retrying
-                time.sleep(0.05)
+                # No frame available, wait very briefly
+                time.sleep(0.01)
             
         except Exception as e:
             print(f"❌ Error processing camera {camera_id}: {e}")
@@ -331,9 +325,9 @@ def stop_monitoring():
     # Stop all cameras
     app_state.camera_manager.stop_all()
     
-    # Wait for threads to finish
-    for thread in app_state.monitoring_threads:
-        if thread.is_alive():
+    # Wait for threads to finish (iterate over values, not keys)
+    for thread in app_state.monitoring_threads.values():
+        if thread and thread.is_alive():
             thread.join(timeout=2.0)
     
     # Clear the thread list
@@ -406,9 +400,17 @@ def export_detections():
 def get_detection_image(filename):
     """Get detection image"""
     try:
-        return send_file(filename)
-    except:
-        return jsonify({'success': False, 'message': 'Image not found'}), 404
+        # Handle both absolute and relative paths
+        if not os.path.isabs(filename):
+            # If relative path, make it absolute from the app root
+            filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+        
+        if os.path.exists(filename):
+            return send_file(filename, mimetype='image/jpeg')
+        else:
+            return jsonify({'success': False, 'message': f'Image not found: {filename}'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error serving image: {str(e)}'}), 500
 
 # WebSocket events
 @socketio.on('connect')

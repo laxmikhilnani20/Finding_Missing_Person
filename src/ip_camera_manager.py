@@ -42,9 +42,11 @@ class IPCamera:
             else:
                 self.capture = cv2.VideoCapture(self.url)
             
-            # Set buffer size to 1 for lower latency
+            # Set buffer size to 1 for lower latency and disable buffering
             if self.capture.isOpened():
                 self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                # Additional settings to reduce latency
+                self.capture.set(cv2.CAP_PROP_FPS, 30)  # Request 30 FPS
                 self.is_active = True
                 print(f"✅ Connected to {self.name} ({self.url})")
                 return True
@@ -77,7 +79,11 @@ class IPCamera:
                     print(f"⚠️ Capture device closed for {self.name}, exiting thread")
                     break
                 
-                ret, frame = self.capture.read()
+                # Grab multiple frames to skip buffered ones (reduces delay)
+                for _ in range(2):
+                    self.capture.grab()
+                
+                ret, frame = self.capture.retrieve()
                 
                 if not ret:
                     print(f"⚠️ Failed to read frame from {self.name}")
@@ -90,12 +96,12 @@ class IPCamera:
                     elapsed = time.time() - start_time
                     self.fps = frame_count / elapsed
                 
-                # Clear old frame and add new one
-                if not self.frame_queue.empty():
+                # Always replace old frame with newest one
+                while not self.frame_queue.empty():
                     try:
                         self.frame_queue.get_nowait()
                     except queue.Empty:
-                        pass
+                        break
                 
                 self.frame_queue.put(frame)
                 self.last_frame_time = datetime.now()

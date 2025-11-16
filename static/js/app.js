@@ -341,15 +341,17 @@ function renderDetectionTable(detections) {
 
         const row = document.createElement('tr');
         row.innerHTML = `
+            <td>
+                <img src="/api/detections/image/${detection.frame_path}" 
+                     alt="${detection.person_name}" 
+                     class="detection-thumbnail"
+                     onclick="viewImage('${detection.frame_path}')"
+                     onerror="this.src='/static/images/no-image.png';this.onerror=null;">
+            </td>
             <td>${detection.timestamp}</td>
             <td>${detection.person_name}</td>
             <td>${detection.camera_name}</td>
             <td><span class="confidence-badge ${badgeClass}">${confidence.toFixed(1)}%</span></td>
-            <td>
-                <button class="icon-btn" onclick="viewImage('${detection.frame_path}')">
-                    <i class="fas fa-image"></i>
-                </button>
-            </td>
         `;
         tbody.appendChild(row);
     });
