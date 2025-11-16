@@ -45,8 +45,8 @@ class IPCamera:
             # Set buffer size to 1 for lower latency and disable buffering
             if self.capture.isOpened():
                 self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                # Additional settings to reduce latency
-                self.capture.set(cv2.CAP_PROP_FPS, 30)  # Request 30 FPS
+                # Request 60 FPS for maximum frame rate
+                self.capture.set(cv2.CAP_PROP_FPS, 60)
                 self.is_active = True
                 print(f"✅ Connected to {self.name} ({self.url})")
                 return True
@@ -79,15 +79,12 @@ class IPCamera:
                     print(f"⚠️ Capture device closed for {self.name}, exiting thread")
                     break
                 
-                # Grab multiple frames to skip buffered ones (reduces delay)
-                for _ in range(2):
-                    self.capture.grab()
-                
-                ret, frame = self.capture.retrieve()
+                # Read frame directly without skipping for maximum FPS
+                ret, frame = self.capture.read()
                 
                 if not ret:
                     print(f"⚠️ Failed to read frame from {self.name}")
-                    time.sleep(0.1)
+                    time.sleep(0.01)
                     continue
                 
                 # Update FPS
@@ -96,7 +93,7 @@ class IPCamera:
                     elapsed = time.time() - start_time
                     self.fps = frame_count / elapsed
                 
-                # Always replace old frame with newest one
+                # Always replace old frame with newest one - keep only latest
                 while not self.frame_queue.empty():
                     try:
                         self.frame_queue.get_nowait()
@@ -108,6 +105,7 @@ class IPCamera:
                 
             except Exception as e:
                 print(f"❌ Error capturing from {self.name}: {e}")
+                time.sleep(0.1)
                 time.sleep(1)
     
     def get_frame(self):

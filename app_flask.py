@@ -75,6 +75,9 @@ def load_missing_persons():
 def process_camera_stream(camera_id):
     """Process individual camera stream and emit updates"""
     
+    frame_count = 0
+    last_log_time = {}  # Track last log time per person to avoid spam
+    
     while app_state.monitoring:
         try:
             # Check if we should exit (monitoring stopped)
@@ -85,7 +88,9 @@ def process_camera_stream(camera_id):
             frame = app_state.camera_manager.get_frame(camera_id)
             
             if frame is not None:
+                frame_count += 1
                 matches = []
+                
                 if app_state.query_embeddings:
                     # Detect faces on every frame for smooth detection
                     matches = app_state.face_engine.detect_and_match(
@@ -111,26 +116,39 @@ def process_camera_stream(camera_id):
                             f"🚨 {known_matches[0]['person_name'].upper()} DETECTED!"
                         )
                         
-                        # Log detection only for known persons
+                        # Log detection only for known persons (throttled to once per 2 seconds per person)
+                        current_time = time.time()
                         cam_info = app_state.camera_manager.get_camera_info(camera_id)
+                        
                         for match in known_matches:
-                            app_state.db_manager.log_detection(
-                                match['person_name'],
-                                camera_id,
-                                cam_info['name'],
-                                match['similarity'],
-                                frame
-                            )
-                            app_state.detection_count += 1
-                            app_state.last_detection = datetime.now()
+                            person_key = f"{match['person_name']}_{camera_id}"
+                            last_logged = last_log_time.get(person_key, 0)
                             
-                            # Emit detection alert
-                            socketio.emit('detection_alert', {
-                                'person_name': match['person_name'],
-                                'camera_name': cam_info['name'],
-                                'similarity': match['similarity'],
-                                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            })
+                            # Only log if more than 2 seconds have passed since last log for this person
+                            if current_time - last_logged >= 2.0:
+                                # Use a separate thread to avoid blocking frame stream
+                                def log_async():
+                                    app_state.db_manager.log_detection(
+                                        match['person_name'],
+                                        camera_id,
+                                        cam_info['name'],
+                                        match['similarity'],
+                                        frame
+                                    )
+                                
+                                threading.Thread(target=log_async, daemon=True).start()
+                                
+                                app_state.detection_count += 1
+                                app_state.last_detection = datetime.now()
+                                last_log_time[person_key] = current_time
+                                
+                                # Emit detection alert
+                                socketio.emit('detection_alert', {
+                                    'person_name': match['person_name'],
+                                    'camera_name': cam_info['name'],
+                                    'similarity': match['similarity'],
+                                    'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                })
                 
                 # Add timestamp overlay
                 cam_info = app_state.camera_manager.get_camera_info(camera_id)
@@ -149,9 +167,11 @@ def process_camera_stream(camera_id):
                     'frame': frame_base64,
                     'has_detection': known_persons_detected
                 })
+                
+                # No sleep - process frames as fast as possible for maximum FPS
             else:
-                # No frame available, wait very briefly
-                time.sleep(0.01)
+                # No frame available, tiny wait to prevent busy loop
+                time.sleep(0.001)  # 1ms minimal delay
             
         except Exception as e:
             print(f"❌ Error processing camera {camera_id}: {e}")
