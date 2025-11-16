@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["python310", "gcc", "libGL"]
+
+[phases.install]
+cmds = ["pip install --no-cache-dir -r requirements_flask.txt"]
+
+[phases.build]
+cmds = ["mkdir -p data/missing_persons data/detections data/models config"]
+
+[start]
+cmd = "python app_flask.py"
