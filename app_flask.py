@@ -369,7 +369,7 @@ def get_detection_log():
             'success': True,
             'detections': log_data,
             'total': len(log_df),
-            'unique_persons': log_df['person_name'].nunique(),
+            'unique_persons': log_df['person_name'].str.lower().nunique(),
             'avg_confidence': log_df['similarity'].mean()
         })
     
