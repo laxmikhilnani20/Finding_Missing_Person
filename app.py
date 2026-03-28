@@ -378,9 +378,8 @@ def handle_disconnect():
     """Handle client disconnection"""
     print('Client disconnected')
 
-# The following block is removed to ensure Gunicorn is used in production
-# if __name__ == '__main__':
-#     # Use Gunicorn as the production server
-#     # The command to run would be: gunicorn -w 4 -b 0.0.0.0:5000 app_flask:app
-#     # For development, you can still use:
-#     socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+if __name__ == '__main__':
+    # Use Gunicorn as the production server
+    # The command to run would be: gunicorn -w 4 -b 0.0.0.0:5000 app_flask:app
+    # For development, you can still use:
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
