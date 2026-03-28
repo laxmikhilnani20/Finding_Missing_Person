@@ -379,7 +379,4 @@ def handle_disconnect():
     print('Client disconnected')
 
 if __name__ == '__main__':
-    # Use Gunicorn as the production server
-    # The command to run would be: gunicorn -w 4 -b 0.0.0.0:5000 app_flask:app
-    # For development, you can still use:
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)

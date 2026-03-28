@@ -2,7 +2,6 @@ Flask==3.0.0
 Flask-SocketIO==5.3.5
 python-socketio==5.10.0
 eventlet==0.33.3
-gunicorn==20.1.0
 
 # Computer Vision & Face Recognition
 opencv-python-headless==4.9.0.80
