@@ -387,4 +387,4 @@ if __name__ == '__main__':
     # Use dynamic port from cloud platform environment
     port = int(os.environ.get('PORT', 5000))
     # Production note: Gunicorn overrides this anyway, this is for local fallback
-    socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=False)
+    socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
