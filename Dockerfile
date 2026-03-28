@@ -26,4 +26,4 @@ EXPOSE 5000
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app_flask.py
 
-CMD ["python", "app_flask.py"]
+CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "app_flask:app"]
