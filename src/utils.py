@@ -149,7 +149,7 @@ def add_alert_banner(frame, message="🚨 PERSON DETECTED!", blink=True):
     cv2.rectangle(alert_frame, (0, height - 60), (width, height), (0, 0, 255), -1)
     
     # Add text
-    text_size = cv2.getTextSize(message, cv2.FONT_HERSHEY_BOLD, 1.0, 2)[0]
+    text_size = cv2.getTextSize(message, cv2.FONT_HERSHEY_DUPLEX, 1.0, 2)[0]
     text_x = (width - text_size[0]) // 2
     text_y = height - 20
     
@@ -157,7 +157,7 @@ def add_alert_banner(frame, message="🚨 PERSON DETECTED!", blink=True):
         alert_frame,
         message,
         (text_x, text_y),
-        cv2.FONT_HERSHEY_BOLD,
+        cv2.FONT_HERSHEY_DUPLEX,
         1.0,
         (255, 255, 255),
         2
