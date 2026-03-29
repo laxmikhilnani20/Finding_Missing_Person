@@ -8,6 +8,7 @@ import os
 import torch
 import tempfile
 import numpy as np
+import io
 
 # Production CPU/Memory optimization overrides
 torch.set_num_threads(1)
@@ -119,6 +120,9 @@ with st.sidebar:
                 with cols[1]:
                     if st.button("Use", key=f"sidebar_use_img_{idx}"):
                         st.session_state["selected_demo_image"] = path
+                        st.session_state["mode_selector"] = "Image Upload"
+                        st.session_state.pop("active_uploaded_image_bytes", None)
+                        st.session_state.pop("active_uploaded_image_name", None)
         else:
             st.caption("No demo images in inputs/")
 
@@ -133,18 +137,25 @@ with st.sidebar:
                 with cols[1]:
                     if st.button("Use", key=f"sidebar_use_vid_{idx}"):
                         st.session_state["selected_demo_video"] = path
+                        st.session_state["mode_selector"] = "Video Upload"
         else:
             st.caption("No demo videos in inputs/")
 
-    if st.session_state.get("selected_demo_image"):
+    if st.session_state.get("active_uploaded_image_name"):
+        st.caption(f"Active image: {st.session_state['active_uploaded_image_name']}")
+        if st.button("Clear Active Image", key="clear_active_uploaded_image"):
+            st.session_state.pop("active_uploaded_image_bytes", None)
+            st.session_state.pop("active_uploaded_image_name", None)
+            st.rerun()
+    elif st.session_state.get("selected_demo_image"):
         st.caption(f"Active image: {os.path.basename(st.session_state['selected_demo_image'])}")
-        if st.button("Clear Active Image"):
+        if st.button("Clear Active Image", key="clear_active_demo_image"):
             st.session_state.pop("selected_demo_image", None)
             st.rerun()
 
     if st.session_state.get("selected_demo_video"):
         st.caption(f"Active video: {os.path.basename(st.session_state['selected_demo_video'])}")
-        if st.button("Clear Active Video"):
+        if st.button("Clear Active Video", key="clear_active_demo_video"):
             st.session_state.pop("selected_demo_video", None)
             st.rerun()
 
@@ -154,16 +165,43 @@ with st.sidebar:
     st.subheader("👤 Register Person")
     person_name = st.text_input("Full Name")
     person_image = st.file_uploader("Clear Face Photo", type=['jpg', 'jpeg', 'png'])
+
+    if person_image is not None:
+        st.session_state["active_uploaded_image_bytes"] = person_image.getvalue()
+        st.session_state["active_uploaded_image_name"] = person_image.name
+
+    active_source_for_registration = None
+    if person_image is not None:
+        active_source_for_registration = "uploaded"
+    elif st.session_state.get("active_uploaded_image_bytes"):
+        active_source_for_registration = "uploaded"
+    elif st.session_state.get("selected_demo_image") and os.path.exists(st.session_state.get("selected_demo_image")):
+        active_source_for_registration = "demo"
+
+    if active_source_for_registration == "uploaded":
+        st.caption("Registration image source: active uploaded image")
+    elif active_source_for_registration == "demo":
+        st.caption("Registration image source: active demo image")
+
     if st.button("Register Person"):
-        if person_name and person_image:
-            res = db_manager.add_missing_person(person_name, person_image)
+        registration_image = None
+
+        if person_image is not None:
+            registration_image = person_image
+        elif st.session_state.get("active_uploaded_image_bytes"):
+            registration_image = io.BytesIO(st.session_state["active_uploaded_image_bytes"])
+        elif st.session_state.get("selected_demo_image") and os.path.exists(st.session_state.get("selected_demo_image")):
+            registration_image = st.session_state["selected_demo_image"]
+
+        if person_name and registration_image is not None:
+            res = db_manager.add_missing_person(person_name, registration_image)
             if res:
                 st.success(f"Registered {person_name}!")
                 st.rerun()
             else:
                 st.error("Registration failed.")
         else:
-            st.warning("Please provide name and image.")
+            st.warning("Please provide name and select/upload an active image.")
 
     # Show registered persons
     persons_dict = db_manager.get_missing_persons()
@@ -185,7 +223,7 @@ with st.sidebar:
         face_engine.set_similarity_threshold(threshold)
 
 
-mode = st.radio("Select Input Mode", ["Image Upload", "Video Upload"])
+mode = st.radio("Select Input Mode", ["Image Upload", "Video Upload"], key="mode_selector")
 demo_media = load_demo_media()
 
 if mode == "Image Upload":
@@ -199,11 +237,18 @@ if mode == "Image Upload":
         nparr = np.frombuffer(file_bytes, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         image_label = "Uploaded Image"
+        st.session_state["active_uploaded_image_bytes"] = file_bytes
+        st.session_state["active_uploaded_image_name"] = uploaded_image.name
     else:
-        selected_demo_image = st.session_state.get("selected_demo_image")
-        if selected_demo_image and os.path.exists(selected_demo_image):
-            frame = cv2.imread(selected_demo_image)
-            image_label = f"Demo Image: {os.path.basename(selected_demo_image)}"
+        if st.session_state.get("active_uploaded_image_bytes"):
+            arr = np.frombuffer(st.session_state["active_uploaded_image_bytes"], np.uint8)
+            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            image_label = f"Uploaded Image: {st.session_state.get('active_uploaded_image_name', 'active_upload')}"
+        else:
+            selected_demo_image = st.session_state.get("selected_demo_image")
+            if selected_demo_image and os.path.exists(selected_demo_image):
+                frame = cv2.imread(selected_demo_image)
+                image_label = f"Demo Image: {os.path.basename(selected_demo_image)}"
 
     if frame is not None:
         st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=image_label, use_container_width=True)
