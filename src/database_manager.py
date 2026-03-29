@@ -36,15 +36,28 @@ class DatabaseManager:
         self._initialize_detection_log()
     
     def _initialize_detection_log(self):
-        """Initialize detection log CSV if it doesn't exist"""
+        """Initialize detection log CSV if it doesn't exist, or migrate if missing columns"""
         if not os.path.exists(self.detection_log_file):
             df = pd.DataFrame(columns=[
                 'timestamp', 'person_name', 'camera_id', 'camera_name',
-                'similarity', 'frame_path'
+                'similarity', 'frame_path', 'bbox_x1', 'bbox_y1', 'bbox_x2', 'bbox_y2'
             ])
             df.to_csv(self.detection_log_file, index=False)
-    
-    def add_missing_person(self, name, image_file):
+        else:
+            # Check if old format and upgrade if needed
+            df = pd.read_csv(self.detection_log_file)
+            required_cols = ['timestamp', 'person_name', 'camera_id', 'camera_name',
+                           'similarity', 'frame_path', 'bbox_x1', 'bbox_y1', 'bbox_x2', 'bbox_y2']
+            
+            # Add missing columns with None values
+            for col in required_cols:
+                if col not in df.columns:
+                    df[col] = None
+                    print(f"ℹ️ Added missing column: {col}")
+            
+            # Save upgraded CSV
+            df[required_cols].to_csv(self.detection_log_file, index=False)
+            print("✅ Detection log schema updated")
         """
         Add a missing person to the database
         
@@ -117,7 +130,7 @@ class DatabaseManager:
         
         return persons
     
-    def log_detection(self, person_name, camera_id, camera_name, similarity, frame):
+    def log_detection(self, person_name, camera_id, camera_name, similarity, frame, bbox=None):
         """
         Log a detection event
         
@@ -127,18 +140,24 @@ class DatabaseManager:
             camera_name (str): Camera name
             similarity (float): Match confidence
             frame: Frame image (numpy array)
+            bbox (list): Bounding box coordinates [x1, y1, x2, y2]
             
         Returns:
             str: Path to saved frame
         """
         try:
             timestamp = datetime.now()
-            timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S")
+            timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S_%f")[:19]
             
             # Save frame
             frame_filename = f"{person_name}_{camera_id}_{timestamp_str}.jpg"
             frame_path = os.path.join(self.detections_path, frame_filename)
             cv2.imwrite(frame_path, frame)
+            
+            # Extract bbox coordinates if provided
+            bbox_x1, bbox_y1, bbox_x2, bbox_y2 = None, None, None, None
+            if bbox and len(bbox) >= 4:
+                bbox_x1, bbox_y1, bbox_x2, bbox_y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
             
             # Add to log
             log_entry = {
@@ -147,7 +166,11 @@ class DatabaseManager:
                 'camera_id': camera_id,
                 'camera_name': camera_name,
                 'similarity': similarity,
-                'frame_path': frame_path
+                'frame_path': frame_path,
+                'bbox_x1': bbox_x1,
+                'bbox_y1': bbox_y1,
+                'bbox_x2': bbox_x2,
+                'bbox_y2': bbox_y2
             }
             
             df = pd.read_csv(self.detection_log_file)
@@ -179,6 +202,23 @@ class DatabaseManager:
             return df
         except Exception as e:
             print(f"❌ Error reading detection log: {e}")
+            return pd.DataFrame()
+    
+    def get_detections_for_person(self, person_name):
+        """
+        Get all detections for a specific person
+        
+        Args:
+            person_name (str): Name of the person
+            
+        Returns:
+            pandas.DataFrame: Detections for that person
+        """
+        try:
+            df = pd.read_csv(self.detection_log_file)
+            return df[df['person_name'] == person_name].sort_values('timestamp', ascending=False)
+        except Exception as e:
+            print(f"❌ Error getting detections for {person_name}: {e}")
             return pd.DataFrame()
     
     def export_detection_report(self, output_path=None):
