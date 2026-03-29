@@ -1,6 +1,5 @@
 streamlit
 opencv-python-headless
-# Use CPU-only Torch to prevent Streamlit Cloud Out-Of-Memory during installation
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
 torchvision
