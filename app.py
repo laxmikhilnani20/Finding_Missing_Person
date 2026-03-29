@@ -107,6 +107,47 @@ with st.sidebar:
     demo_media = load_demo_media()
     st.caption(f"Images: {len(demo_media['images'])}")
     st.caption(f"Videos: {len(demo_media['videos'])}")
+
+    st.write("**Demo Images**")
+    image_list_box = st.container(height=220, border=True)
+    with image_list_box:
+        if demo_media["images"]:
+            for idx, path in enumerate(demo_media["images"]):
+                cols = st.columns([3, 1])
+                with cols[0]:
+                    st.caption(os.path.basename(path))
+                with cols[1]:
+                    if st.button("Use", key=f"sidebar_use_img_{idx}"):
+                        st.session_state["selected_demo_image"] = path
+        else:
+            st.caption("No demo images in inputs/")
+
+    st.write("**Demo Videos**")
+    video_list_box = st.container(height=220, border=True)
+    with video_list_box:
+        if demo_media["videos"]:
+            for idx, path in enumerate(demo_media["videos"]):
+                cols = st.columns([3, 1])
+                with cols[0]:
+                    st.caption(os.path.basename(path))
+                with cols[1]:
+                    if st.button("Use", key=f"sidebar_use_vid_{idx}"):
+                        st.session_state["selected_demo_video"] = path
+        else:
+            st.caption("No demo videos in inputs/")
+
+    if st.session_state.get("selected_demo_image"):
+        st.caption(f"Active image: {os.path.basename(st.session_state['selected_demo_image'])}")
+        if st.button("Clear Active Image"):
+            st.session_state.pop("selected_demo_image", None)
+            st.rerun()
+
+    if st.session_state.get("selected_demo_video"):
+        st.caption(f"Active video: {os.path.basename(st.session_state['selected_demo_video'])}")
+        if st.button("Clear Active Video"):
+            st.session_state.pop("selected_demo_video", None)
+            st.rerun()
+
     st.markdown("---")
     
     # --- 1. Person Management ---
@@ -149,37 +190,20 @@ demo_media = load_demo_media()
 
 if mode == "Image Upload":
     st.markdown("<h3 style='text-align:center;'>Image Detection Workspace</h3>", unsafe_allow_html=True)
-    image_source = st.radio("Image Source", ["Upload Image", "Demo Images"], horizontal=True)
     frame = None
     image_label = ""
 
-    if image_source == "Upload Image":
-        uploaded_image = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
-        if uploaded_image is not None:
-            file_bytes = uploaded_image.read()
-            nparr = np.frombuffer(file_bytes, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            image_label = "Uploaded Image"
+    uploaded_image = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
+    if uploaded_image is not None:
+        file_bytes = uploaded_image.read()
+        nparr = np.frombuffer(file_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        image_label = "Uploaded Image"
     else:
-        st.write("Choose from demo images")
-        if demo_media["images"]:
-            gallery = st.container(height=380, border=True)
-            with gallery:
-                for path in demo_media["images"]:
-                    cols = st.columns([1, 2])
-                    with cols[0]:
-                        st.image(path, width=130)
-                    with cols[1]:
-                        st.write(os.path.basename(path))
-                        if st.button("Use This Image", key=f"use_img_{path}"):
-                            st.session_state["selected_demo_image"] = path
-
-            selected_demo_image = st.session_state.get("selected_demo_image")
-            if selected_demo_image and os.path.exists(selected_demo_image):
-                frame = cv2.imread(selected_demo_image)
-                image_label = f"Demo Image: {os.path.basename(selected_demo_image)}"
-        else:
-            st.info("No demo images found in inputs/. Add files to inputs/ and click Refresh Demo Files.")
+        selected_demo_image = st.session_state.get("selected_demo_image")
+        if selected_demo_image and os.path.exists(selected_demo_image):
+            frame = cv2.imread(selected_demo_image)
+            image_label = f"Demo Image: {os.path.basename(selected_demo_image)}"
 
     if frame is not None:
         st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=image_label, use_container_width=True)
@@ -222,35 +246,23 @@ if mode == "Image Upload":
 
 elif mode == "Video Upload":
     st.markdown("<h3 style='text-align:center;'>Video Detection Workspace</h3>", unsafe_allow_html=True)
-    video_source = st.radio("Video Source", ["Upload Video", "Demo Videos"], horizontal=True)
     selected_video_path = None
     source_label = ""
 
-    if video_source == "Upload Video":
-        uploaded_video = st.file_uploader("Upload Video", type=['mp4', 'avi', 'mov', 'mkv'])
-        if uploaded_video is not None:
-            tfile = tempfile.NamedTemporaryFile(delete=False)
-            tfile.write(uploaded_video.read())
-            selected_video_path = tfile.name
-            source_label = "Uploaded Video"
+    uploaded_video = st.file_uploader("Upload Video", type=['mp4', 'avi', 'mov', 'mkv'])
+    if uploaded_video is not None:
+        tfile = tempfile.NamedTemporaryFile(delete=False)
+        tfile.write(uploaded_video.read())
+        selected_video_path = tfile.name
+        source_label = "Uploaded Video"
     else:
-        st.write("Choose from demo videos")
-        if demo_media["videos"]:
-            playlist = st.container(height=320, border=True)
-            with playlist:
-                for path in demo_media["videos"]:
-                    cols = st.columns([3, 1])
-                    with cols[0]:
-                        st.write(os.path.basename(path))
-                    with cols[1]:
-                        if st.button("Select", key=f"use_vid_{path}"):
-                            st.session_state["selected_demo_video"] = path
-
-            selected_demo_video = st.session_state.get("selected_demo_video")
-            if selected_demo_video and os.path.exists(selected_demo_video):
-                selected_video_path = selected_demo_video
-                source_label = f"Demo Video: {os.path.basename(selected_demo_video)}"
-                st.video(selected_demo_video)
+        selected_demo_video = st.session_state.get("selected_demo_video")
+        if selected_demo_video and os.path.exists(selected_demo_video):
+            selected_video_path = selected_demo_video
+            source_label = f"Demo Video: {os.path.basename(selected_demo_video)}"
+            st.video(selected_demo_video)
+        elif demo_media["videos"]:
+            st.info("Select a demo video from the left Control Panel.")
         else:
             st.info("No demo videos found in inputs/. Add files to inputs/ and click Refresh Demo Files.")
 
