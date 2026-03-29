@@ -14,16 +14,15 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements_flask.txt requirements.txt
+COPY requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
 RUN mkdir -p data/missing_persons data/detections data/models config
 
-EXPOSE 5000
+EXPOSE 8501
 
 ENV PYTHONUNBUFFERED=1
-ENV FLASK_APP=app_flask.py
 
-CMD ["python", "app_flask.py"]
+CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]

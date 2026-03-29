@@ -2,10 +2,10 @@
 nixPkgs = ["python310", "gcc", "libGL"]
 
 [phases.install]
-cmds = ["pip install --no-cache-dir -r requirements_flask.txt"]
+cmds = ["pip install --no-cache-dir -r requirements.txt"]
 
 [phases.build]
 cmds = ["mkdir -p data/missing_persons data/detections data/models config"]
 
 [start]
-cmd = "gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:${PORT:-5000} app_flask:app"
+cmd = "streamlit run app.py --server.port=${PORT:-8501} --server.address=0.0.0.0"

@@ -1,1 +1,1 @@
-web: gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:${PORT:-5000} app_flask:app
+web: streamlit run app.py --server.port=${PORT:-8501} --server.address=0.0.0.0
