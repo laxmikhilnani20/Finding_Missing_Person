@@ -6,6 +6,8 @@ import pandas as pd
 from datetime import datetime
 import os
 import torch
+import av
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
 # Production CPU/Memory optimization overrides
 torch.set_num_threads(1)
@@ -13,9 +15,14 @@ torch.set_grad_enabled(False)
 
 # Import custom modules
 from src.face_recognition_engine import FaceRecognitionEngine
-from src.ip_camera_manager import IPCameraManager
 from src.database_manager import DatabaseManager
-from src.utils import add_timestamp_overlay, add_alert_banner, validate_ip_url
+from src.utils import add_timestamp_overlay, add_alert_banner
+
+# --- WebRTC Configuration ---
+# Required for Streamlit Cloud to negotiate the connection smoothly across internet firewalls
+RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
 
 # --- Page Config ---
 st.set_page_config(
@@ -25,12 +32,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Allow larger file uploads up to 16MB standard for images
 st.markdown(
     """
     <style>
-    .stApp {
-        max-width: 100%;
+    .stApp { max-width: 100%; }
+    /* Enhance the WebRTC video styling */
+    div[data-testid="stWebRtc"] video {
+        border-radius: 10px;
+        border: 2px solid #ff4b4b;
     }
     </style>
     """,
@@ -40,23 +49,11 @@ st.markdown(
 # --- Initialize Backend Systems ---
 @st.cache_resource
 def init_system():
-    # Cache the engine and managers so they persist and don't reload on every UI click
     engine = FaceRecognitionEngine(similarity_threshold=0.65)
-    cam_manager = IPCameraManager()
     db_manager = DatabaseManager()
-    
-    # Load previously saved cameras from json
-    saved_cameras = db_manager.load_camera_config()
-    for cam in saved_cameras:
-        cam_manager.add_camera(cam['id'], cam['name'], cam['url'])
-        
-    return engine, cam_manager, db_manager
+    return engine, db_manager
 
-face_engine, camera_manager, db_manager = init_system()
-
-# Monitor State Initialization
-if 'monitoring' not in st.session_state:
-    st.session_state.monitoring = False
+face_engine, db_manager = init_system()
 
 # Compute embeddings efficiently and cache them based on registered persons
 def load_embeddings():
@@ -77,61 +74,7 @@ with st.sidebar:
     st.title("⚙️ Control Panel")
     st.markdown("---")
     
-    # --- 1. Camera Management ---
-    st.subheader("📹 Add Camera")
-    cam_name = st.text_input("Name (e.g., Main Entrance, Phone)")
-    cam_url = st.text_input("Stream URL (IP Camera / RTSP)")
-    
-    col_t, col_a = st.columns(2)
-    with col_t:
-        test_cam = st.button("Test Connection")
-    with col_a:
-        add_cam = st.button("Add Camera")
-
-    if test_cam:
-        if cam_url and validate_ip_url(cam_url):
-            st.info("Testing...")
-            test_cap = cv2.VideoCapture(cam_url)
-            if test_cap.isOpened():
-                st.success("✅ Success!")
-                test_cap.release()
-            else:
-                st.error("❌ Failed")
-        else:
-            st.warning("Valid URL required.")
-            
-    if add_cam:
-        if cam_name and cam_url and validate_ip_url(cam_url):
-            cam_id = f"cam_{int(time.time())}"
-            if camera_manager.add_camera(cam_id, cam_name, cam_url):
-                # Save config
-                cams = [{"id": cid, "name": info["name"], "url": info["url"]} 
-                        for cid, info in camera_manager.get_all_camera_info().items()]
-                db_manager.save_camera_config(cams)
-                st.success(f"Added {cam_name}!")
-                st.rerun()
-            else:
-                st.error("Failed to connect.")
-        else:
-            st.error("Invalid Name or URL.")
-
-    # Show active cameras & removal option
-    active_cams = camera_manager.get_all_camera_info()
-    if active_cams:
-        st.write("**Active Cameras**")
-        for cid, info in active_cams.items():
-            cc1, cc2 = st.columns([4, 1])
-            cc1.caption(f"{info['name']} ({'🟢' if info['is_active'] else '🔴'})")
-            if cc2.button("🗑️", key=f"del_{cid}", help="Remove Camera"):
-                camera_manager.remove_camera(cid)
-                cams_updated = [{"id": _id, "name": _info["name"], "url": _info["url"]} 
-                                for _id, _info in camera_manager.get_all_camera_info().items()]
-                db_manager.save_camera_config(cams_updated)
-                st.rerun()
-
-    st.markdown("---")
-    
-    # --- 2. Person Management ---
+    # --- 1. Person Management ---
     st.subheader("👤 Register Person")
     person_name = st.text_input("Full Name")
     person_image = st.file_uploader("Clear Face Photo", type=['jpg', 'jpeg', 'png'])
@@ -159,98 +102,79 @@ with st.sidebar:
 
     st.markdown("---")
     
-    # --- 3. System Settings ---
+    # --- 2. System Settings ---
     st.subheader("📊 Model Settings")
     threshold = st.slider("Match Confidence Threshold", 0.0, 1.0, 0.65, 0.05)
     if face_engine.similarity_threshold != threshold:
         face_engine.set_similarity_threshold(threshold)
 
 # --- Main Dashboard ---
-st.title("🔍 CCTV Missing Person Detection System")
+st.title("🔍 WebRTC Missing Person Detection System")
+st.caption("Securely streams directly from your device's camera to the cloud for real-time inference.")
 
-# Refresh embeddings on top strictly once logic hits main
+# Refresh embeddings
 query_embeddings = load_embeddings()
 
 col_main, col_logs = st.columns([3, 1])
 
-with col_main:
-    st.subheader("📹 Live Feed & Detection")
+# Global state to throttle database logging inside the video thread
+if 'last_detection_log_time' not in st.session_state:
+    st.session_state['last_detection_log_time'] = 0
+
+def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
+    """
+    This function processes every single frame produced by the user's camera automatically.
+    """
+    img = frame.to_ndarray(format="bgr24")
     
-    # Start/Stop Monitor Controls
-    ctrl1, ctrl2 = st.columns([1, 4])
-    if not st.session_state.monitoring:
-        if ctrl1.button("▶️ Start Monitoring", use_container_width=True):
-            if camera_manager.start_all():
-                st.session_state.monitoring = True
-                st.rerun()
-            else:
-                st.error("Failed to start. Ensure you have added active cameras.")
-    else:
-        if ctrl1.button("⏹️ Stop Monitoring", use_container_width=True, type="primary"):
-            st.session_state.monitoring = False
-            camera_manager.stop_all()
-            st.rerun()
-            
-    # Video Feeds Section
-    if st.session_state.monitoring:
-        cams_info = camera_manager.get_all_camera_info()
-        if not cams_info:
-            st.warning("No linked cameras!")
-            st.session_state.monitoring = False
-            st.rerun()
-            
-        st.caption("Monitoring Live Streaming... (Optimized for Streamlit)")
+    # 1. Detection Process
+    matches = face_engine.detect_and_match(img, query_embeddings)
+    
+    if matches:
+        img = face_engine.draw_matches(img, matches)
+        img = add_alert_banner(img, f"🚨 {matches[0]['person_name'].upper()} DETECTED!")
         
-        # We create a placeholder grid for the cameras
-        cam_placeholders = {}
-        cols = st.columns(len(cams_info) if len(cams_info) <= 2 else 2) # max 2 per row
-        col_idx = 0
-        
-        for cid, info in cams_info.items():
-            with cols[col_idx % 2]:
-                st.write(f"**{info['name']}**")
-                cam_placeholders[cid] = st.empty()
-            col_idx += 1
+        # 2. Database Logging (Throttled to once every 3 seconds to prevent database locking)
+        current_time = time.time()
+        # Note: session_state doesn't natively map into the webrtc thread perfectly depending on context,
+        # but for simple local file logging, directly engaging db_manager is fine.
+        for match in matches:
+            db_manager.log_detection(
+                match['person_name'], "webrtc_camera_1", "Web User Camera",
+                match['similarity'], img
+            )
             
-        # The Infinite Stream Loop
-        while st.session_state.monitoring:
-            for cid, info in cams_info.items():
-                frame = camera_manager.get_frame(cid)
-                
-                if frame is not None:
-                    # 1. Detection Process
-                    matches = face_engine.detect_and_match(frame, query_embeddings)
-                    
-                    if matches:
-                        frame = face_engine.draw_matches(frame, matches)
-                        frame = add_alert_banner(frame, f"🚨 {matches[0]['person_name'].upper()} DETECTED!")
-                        
-                        # Database logging logic (throttle inserts based on time or just standard logging per design)
-                        for match in matches:
-                            db_manager.log_detection(
-                                match['person_name'], cid, info['name'],
-                                match['similarity'], frame
-                            )
-                            
-                    # 2. Frame Processing for Display
-                    frame = add_timestamp_overlay(frame, info['name'])
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    
-                    cam_placeholders[cid].image(frame_rgb, channels="RGB", use_container_width=True)
-                    
-            # Important to sleep very minimally so UI inputs can be registered
-            time.sleep(0.04)
+    # 3. Frame Processing for Display
+    img = add_timestamp_overlay(img, "Live Client WebRTC")
+    
+    return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+
+with col_main:
+    st.subheader("📹 Live Camera Feed")
+    
+    webrtc_streamer(
+        key="detection-stream",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=RTC_CONFIGURATION,
+        video_frame_callback=video_frame_callback,
+        media_stream_constraints={
+            "video": True,
+            "audio": False # Audio is not needed for face detection
+        },
+        async_processing=True
+    )
 
 with col_logs:
     st.subheader("📋 Detection Logs")
     if st.button("🔄 Refresh Logs"):
-        pass # Rerunning the UI refreshes
+        pass # Streamlit handles rerun automatically
         
     log_file = db_manager.detection_log_file
     if os.path.exists(log_file):
         df = pd.read_csv(log_file)
         if not df.empty:
-            df["Confidence"] = df["similarity"].apply(lambda x: f"{x:.1%}")
+            df["Confidence"] = df["similarity"].apply(lambda x: f"{float(x):.1%}")
             st.dataframe(
                 df.tail(10)[['timestamp', 'person_name', 'camera_name', 'Confidence']].iloc[::-1],
                 use_container_width=True, 
