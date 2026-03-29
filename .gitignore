@@ -70,10 +70,6 @@ all_faces_report.csv
 *.pkl
 detection_report_*.csv
 
-# Input test files (optional, comment out if you want to commit these)
-inputs/*.mp4
-inputs/*.avi
-inputs/*.mov
-
+# Demo input assets are tracked in repository
 # Keep the input directory structure
 !inputs/.gitkeep

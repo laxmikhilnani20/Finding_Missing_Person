@@ -8,7 +8,6 @@ import os
 import torch
 import tempfile
 import numpy as np
-import requests
 
 # Production CPU/Memory optimization overrides
 torch.set_num_threads(1)
@@ -18,8 +17,12 @@ torch.set_grad_enabled(False)
 from src.face_recognition_engine import FaceRecognitionEngine
 from src.ip_camera_manager import IPCameraManager
 from src.database_manager import DatabaseManager
-from src.demo_loader import DemoLoader
 from src.utils import add_timestamp_overlay, add_alert_banner, validate_ip_url
+
+
+DEMO_INPUT_DIR = "inputs"
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
+VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv")
 
 
 # --- Page Config ---
@@ -48,31 +51,33 @@ def init_system():
     engine = FaceRecognitionEngine(similarity_threshold=0.65)
     # cam_manager = IPCameraManager()  # Removed for cloud demo
     db_manager = DatabaseManager()
-    demo_loader = DemoLoader()
-    return engine, db_manager, demo_loader
+    return engine, db_manager
     
 
-face_engine, db_manager, demo_loader = init_system()
+face_engine, db_manager = init_system()
 
 
 @st.cache_data(show_spinner=False)
-def load_demo_assets():
-    """Load and cache demo files on app start."""
-    return demo_loader.get_all_demos()
+def load_demo_media():
+    """Load demo media paths from the inputs directory."""
+    images = []
+    videos = []
 
+    if not os.path.exists(DEMO_INPUT_DIR):
+        return {"images": images, "videos": videos}
 
-demo_assets = load_demo_assets()
+    for root, _, files in os.walk(DEMO_INPUT_DIR):
+        for name in files:
+            path = os.path.join(root, name)
+            lower_name = name.lower()
+            if lower_name.endswith(IMAGE_EXTENSIONS):
+                images.append(path)
+            elif lower_name.endswith(VIDEO_EXTENSIONS):
+                videos.append(path)
 
-
-def load_image_from_source(source_value):
-    """Load image from local file path or URL into an OpenCV BGR frame."""
-    if source_value.startswith("http://") or source_value.startswith("https://"):
-        response = requests.get(source_value, timeout=15)
-        response.raise_for_status()
-        arr = np.frombuffer(response.content, dtype=np.uint8)
-        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        return frame
-    return cv2.imread(source_value)
+    images.sort()
+    videos.sort()
+    return {"images": images, "videos": videos}
 
 # Compute embeddings efficiently
 def load_embeddings():
@@ -95,12 +100,13 @@ with st.sidebar:
     st.title("⚙️ Control Panel")
     st.markdown("---")
 
-    st.subheader("🎬 Demo Assets")
-    if st.button("Reload Demo Assets"):
-        load_demo_assets.clear()
+    st.subheader("🎞️ Demo Library")
+    if st.button("Refresh Demo Files"):
+        load_demo_media.clear()
         st.rerun()
-    st.caption(f"Images available: {len(demo_assets.get('images', {}))}")
-    st.caption(f"Videos available: {len(demo_assets.get('videos', {}))}")
+    demo_media = load_demo_media()
+    st.caption(f"Images: {len(demo_media['images'])}")
+    st.caption(f"Videos: {len(demo_media['videos'])}")
     st.markdown("---")
     
     # --- 1. Person Management ---
@@ -139,39 +145,44 @@ with st.sidebar:
 
 
 mode = st.radio("Select Input Mode", ["Image Upload", "Video Upload"])
+demo_media = load_demo_media()
 
 if mode == "Image Upload":
     st.markdown("<h3 style='text-align:center;'>Image Detection Workspace</h3>", unsafe_allow_html=True)
-    image_source = st.sidebar.radio("Image Source", ["Demo Images", "Upload Image"], key="image_source_selector")
-
+    image_source = st.radio("Image Source", ["Upload Image", "Demo Images"], horizontal=True)
     frame = None
-    image_caption = ""
+    image_label = ""
 
-    if image_source == "Demo Images":
-        demo_images = demo_assets.get('images', {})
-        if demo_images:
-            selected_demo_image = st.selectbox("Choose Demo Image", list(demo_images.keys()))
-            selected_image_path = demo_images[selected_demo_image]
-            try:
-                frame = load_image_from_source(selected_image_path)
-            except Exception as e:
-                st.error(f"Could not load demo image: {e}")
-                frame = None
-            image_caption = f"Demo Image: {selected_demo_image}"
-        else:
-            st.warning("No demo images available right now.")
-    else:
+    if image_source == "Upload Image":
         uploaded_image = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
         if uploaded_image is not None:
             file_bytes = uploaded_image.read()
             nparr = np.frombuffer(file_bytes, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            image_caption = "Uploaded Image"
+            image_label = "Uploaded Image"
+    else:
+        st.write("Choose from demo images")
+        if demo_media["images"]:
+            gallery = st.container(height=380, border=True)
+            with gallery:
+                for path in demo_media["images"]:
+                    cols = st.columns([1, 2])
+                    with cols[0]:
+                        st.image(path, width=130)
+                    with cols[1]:
+                        st.write(os.path.basename(path))
+                        if st.button("Use This Image", key=f"use_img_{path}"):
+                            st.session_state["selected_demo_image"] = path
+
+            selected_demo_image = st.session_state.get("selected_demo_image")
+            if selected_demo_image and os.path.exists(selected_demo_image):
+                frame = cv2.imread(selected_demo_image)
+                image_label = f"Demo Image: {os.path.basename(selected_demo_image)}"
+        else:
+            st.info("No demo images found in inputs/. Add files to inputs/ and click Refresh Demo Files.")
 
     if frame is not None:
-        source_name = "Demo Image" if image_source == "Demo Images" else "Uploaded Image"
-
-        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=image_caption, use_container_width=True)
+        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=image_label, use_container_width=True)
 
         if st.button("Run Detection"):
             if not query_embeddings:
@@ -187,8 +198,8 @@ if mode == "Image Upload":
                     for match in matches:
                         db_manager.log_detection(
                             match['person_name'], 
-                            "image_demo" if image_source == "Demo Images" else "image_upload",
-                            source_name,
+                            "image_upload",
+                            image_label,
                             match['similarity'], 
                             frame_annotated,
                             bbox=match['bbox']
@@ -211,28 +222,37 @@ if mode == "Image Upload":
 
 elif mode == "Video Upload":
     st.markdown("<h3 style='text-align:center;'>Video Detection Workspace</h3>", unsafe_allow_html=True)
-    video_source = st.sidebar.radio("Video Source", ["Demo Videos", "Upload Video"], key="video_source_selector")
-
+    video_source = st.radio("Video Source", ["Upload Video", "Demo Videos"], horizontal=True)
     selected_video_path = None
     source_label = ""
 
-    if video_source == "Demo Videos":
-        demo_videos = demo_assets.get('videos', {})
-        if demo_videos:
-            selected_demo_video = st.selectbox("Choose Demo Video", list(demo_videos.keys()))
-            selected_video_path = demo_videos[selected_demo_video]
-            source_label = f"Demo Video: {selected_demo_video}"
-            st.caption("Demo videos are downloaded and cached automatically from YouTube.")
-        else:
-            st.warning("No demo videos available right now. You can still use Upload Video.")
-            st.caption("If this persists on cloud, confirm yt-dlp is installed and outbound video access is allowed.")
-    else:
-        uploaded_video = st.file_uploader("Upload Video", type=['mp4', 'avi', 'mov'])
+    if video_source == "Upload Video":
+        uploaded_video = st.file_uploader("Upload Video", type=['mp4', 'avi', 'mov', 'mkv'])
         if uploaded_video is not None:
             tfile = tempfile.NamedTemporaryFile(delete=False)
             tfile.write(uploaded_video.read())
             selected_video_path = tfile.name
             source_label = "Uploaded Video"
+    else:
+        st.write("Choose from demo videos")
+        if demo_media["videos"]:
+            playlist = st.container(height=320, border=True)
+            with playlist:
+                for path in demo_media["videos"]:
+                    cols = st.columns([3, 1])
+                    with cols[0]:
+                        st.write(os.path.basename(path))
+                    with cols[1]:
+                        if st.button("Select", key=f"use_vid_{path}"):
+                            st.session_state["selected_demo_video"] = path
+
+            selected_demo_video = st.session_state.get("selected_demo_video")
+            if selected_demo_video and os.path.exists(selected_demo_video):
+                selected_video_path = selected_demo_video
+                source_label = f"Demo Video: {os.path.basename(selected_demo_video)}"
+                st.video(selected_demo_video)
+        else:
+            st.info("No demo videos found in inputs/. Add files to inputs/ and click Refresh Demo Files.")
 
     if selected_video_path:
         st.info(source_label)
