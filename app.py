@@ -6,6 +6,8 @@ import pandas as pd
 from datetime import datetime
 import os
 import torch
+import tempfile
+import numpy as np
 
 # Production CPU/Memory optimization overrides
 torch.set_num_threads(1)
