@@ -17,6 +17,7 @@ torch.set_grad_enabled(False)
 from src.face_recognition_engine import FaceRecognitionEngine
 from src.ip_camera_manager import IPCameraManager
 from src.database_manager import DatabaseManager
+from src.demo_loader import DemoLoader
 from src.utils import add_timestamp_overlay, add_alert_banner, validate_ip_url
 
 
@@ -46,10 +47,20 @@ def init_system():
     engine = FaceRecognitionEngine(similarity_threshold=0.65)
     # cam_manager = IPCameraManager()  # Removed for cloud demo
     db_manager = DatabaseManager()
-    return engine, db_manager
+    demo_loader = DemoLoader()
+    return engine, db_manager, demo_loader
     
 
-face_engine, db_manager = init_system()
+face_engine, db_manager, demo_loader = init_system()
+
+
+@st.cache_data(show_spinner=False)
+def load_demo_assets():
+    """Load and cache demo files on app start."""
+    return demo_loader.get_all_demos()
+
+
+demo_assets = load_demo_assets()
 
 # Compute embeddings efficiently
 def load_embeddings():
@@ -110,14 +121,32 @@ with st.sidebar:
 mode = st.radio("Select Input Mode", ["Image Upload", "Video Upload"])
 
 if mode == "Image Upload":
-    uploaded_image = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
-    if uploaded_image is not None:
-        file_bytes = uploaded_image.read()
-        import numpy as np
-        nparr = np.frombuffer(file_bytes, np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    image_source = st.radio("Image Source", ["Demo Images", "Upload Image"], horizontal=True)
 
-        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption="Uploaded Image", use_container_width=True)
+    frame = None
+    image_caption = ""
+
+    if image_source == "Demo Images":
+        demo_images = demo_assets.get('images', {})
+        if demo_images:
+            selected_demo_image = st.selectbox("Choose Demo Image", list(demo_images.keys()))
+            selected_image_path = demo_images[selected_demo_image]
+            frame = cv2.imread(selected_image_path)
+            image_caption = f"Demo Image: {selected_demo_image}"
+        else:
+            st.warning("No demo images available right now.")
+    else:
+        uploaded_image = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
+        if uploaded_image is not None:
+            file_bytes = uploaded_image.read()
+            nparr = np.frombuffer(file_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            image_caption = "Uploaded Image"
+
+    if frame is not None:
+        source_name = "Demo Image" if image_source == "Demo Images" else "Uploaded Image"
+
+        st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), caption=image_caption, use_container_width=True)
 
         if st.button("Run Detection"):
             if not query_embeddings:
@@ -133,8 +162,8 @@ if mode == "Image Upload":
                     for match in matches:
                         db_manager.log_detection(
                             match['person_name'], 
-                            "image_upload", 
-                            "Uploaded Image",
+                            "image_demo" if image_source == "Demo Images" else "image_upload",
+                            source_name,
                             match['similarity'], 
                             frame_annotated,
                             bbox=match['bbox']
@@ -156,16 +185,35 @@ if mode == "Image Upload":
                     st.info("No matches found in this image.")
 
 elif mode == "Video Upload":
-    uploaded_video = st.file_uploader("Upload Video", type=['mp4', 'avi', 'mov'])
-    if uploaded_video is not None:
-        tfile = tempfile.NamedTemporaryFile(delete=False) 
-        tfile.write(uploaded_video.read())
+    video_source = st.radio("Video Source", ["Demo Videos", "Upload Video"], horizontal=True)
+
+    selected_video_path = None
+    source_label = ""
+
+    if video_source == "Demo Videos":
+        demo_videos = demo_assets.get('videos', {})
+        if demo_videos:
+            selected_demo_video = st.selectbox("Choose Demo Video", list(demo_videos.keys()))
+            selected_video_path = demo_videos[selected_demo_video]
+            source_label = f"Demo Video: {selected_demo_video}"
+        else:
+            st.warning("No demo videos available right now.")
+    else:
+        uploaded_video = st.file_uploader("Upload Video", type=['mp4', 'avi', 'mov'])
+        if uploaded_video is not None:
+            tfile = tempfile.NamedTemporaryFile(delete=False)
+            tfile.write(uploaded_video.read())
+            selected_video_path = tfile.name
+            source_label = "Uploaded Video"
+
+    if selected_video_path:
+        st.info(source_label)
 
         if st.button("Run Detection on Video"):
             if not query_embeddings:
                 st.warning("No registered persons to detect.")
             else:
-                cap = cv2.VideoCapture(tfile.name)
+                cap = cv2.VideoCapture(selected_video_path)
                 frame_placeholder = st.empty()
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -191,7 +239,7 @@ elif mode == "Video Upload":
                                 db_manager.log_detection(
                                     match['person_name'], 
                                     f"video_frame_{frame_count}", 
-                                    "Video Upload",
+                                    source_label,
                                     match['similarity'], 
                                     frame_annotated,
                                     bbox=match['bbox']
