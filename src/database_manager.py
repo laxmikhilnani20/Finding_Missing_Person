@@ -58,6 +58,8 @@ class DatabaseManager:
             # Save upgraded CSV
             df[required_cols].to_csv(self.detection_log_file, index=False)
             print("✅ Detection log schema updated")
+    
+    def add_missing_person(self, name, image_file):
         """
         Add a missing person to the database
         
