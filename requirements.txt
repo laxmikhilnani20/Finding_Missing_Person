@@ -10,4 +10,3 @@ pillow
 python-dateutil
 requests
 yt-dlp
-beautifulsoup4
