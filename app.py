@@ -42,8 +42,9 @@ st.markdown(
 def init_system():
     # Cache the engine and managers so they persist
     engine = FaceRecognitionEngine(similarity_threshold=0.65)
-    cam_manager = IPCameraManager()
+    # cam_manager = IPCameraManager()  # Removed for cloud demo
     db_manager = DatabaseManager()
+    return engine, db_manager
     
 
 face_engine, db_manager = init_system()
