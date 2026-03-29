@@ -8,6 +8,7 @@ import os
 import torch
 import tempfile
 import numpy as np
+import requests
 
 # Production CPU/Memory optimization overrides
 torch.set_num_threads(1)
@@ -62,6 +63,17 @@ def load_demo_assets():
 
 demo_assets = load_demo_assets()
 
+
+def load_image_from_source(source_value):
+    """Load image from local file path or URL into an OpenCV BGR frame."""
+    if source_value.startswith("http://") or source_value.startswith("https://"):
+        response = requests.get(source_value, timeout=15)
+        response.raise_for_status()
+        arr = np.frombuffer(response.content, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        return frame
+    return cv2.imread(source_value)
+
 # Compute embeddings efficiently
 def load_embeddings():
     persons = db_manager.get_missing_persons()
@@ -81,6 +93,14 @@ query_embeddings = load_embeddings()
 # --- Sidebar UI ---
 with st.sidebar:
     st.title("⚙️ Control Panel")
+    st.markdown("---")
+
+    st.subheader("🎬 Demo Assets")
+    if st.button("Reload Demo Assets"):
+        load_demo_assets.clear()
+        st.rerun()
+    st.caption(f"Images available: {len(demo_assets.get('images', {}))}")
+    st.caption(f"Videos available: {len(demo_assets.get('videos', {}))}")
     st.markdown("---")
     
     # --- 1. Person Management ---
@@ -121,7 +141,8 @@ with st.sidebar:
 mode = st.radio("Select Input Mode", ["Image Upload", "Video Upload"])
 
 if mode == "Image Upload":
-    image_source = st.radio("Image Source", ["Demo Images", "Upload Image"], horizontal=True)
+    st.markdown("<h3 style='text-align:center;'>Image Detection Workspace</h3>", unsafe_allow_html=True)
+    image_source = st.sidebar.radio("Image Source", ["Demo Images", "Upload Image"], key="image_source_selector")
 
     frame = None
     image_caption = ""
@@ -131,7 +152,11 @@ if mode == "Image Upload":
         if demo_images:
             selected_demo_image = st.selectbox("Choose Demo Image", list(demo_images.keys()))
             selected_image_path = demo_images[selected_demo_image]
-            frame = cv2.imread(selected_image_path)
+            try:
+                frame = load_image_from_source(selected_image_path)
+            except Exception as e:
+                st.error(f"Could not load demo image: {e}")
+                frame = None
             image_caption = f"Demo Image: {selected_demo_image}"
         else:
             st.warning("No demo images available right now.")
@@ -185,7 +210,8 @@ if mode == "Image Upload":
                     st.info("No matches found in this image.")
 
 elif mode == "Video Upload":
-    video_source = st.radio("Video Source", ["Demo Videos", "Upload Video"], horizontal=True)
+    st.markdown("<h3 style='text-align:center;'>Video Detection Workspace</h3>", unsafe_allow_html=True)
+    video_source = st.sidebar.radio("Video Source", ["Demo Videos", "Upload Video"], key="video_source_selector")
 
     selected_video_path = None
     source_label = ""
@@ -196,8 +222,10 @@ elif mode == "Video Upload":
             selected_demo_video = st.selectbox("Choose Demo Video", list(demo_videos.keys()))
             selected_video_path = demo_videos[selected_demo_video]
             source_label = f"Demo Video: {selected_demo_video}"
+            st.caption("Demo videos are downloaded and cached automatically from YouTube.")
         else:
-            st.warning("No demo videos available right now.")
+            st.warning("No demo videos available right now. You can still use Upload Video.")
+            st.caption("If this persists on cloud, confirm yt-dlp is installed and outbound video access is allowed.")
     else:
         uploaded_video = st.file_uploader("Upload Video", type=['mp4', 'avi', 'mov'])
         if uploaded_video is not None:

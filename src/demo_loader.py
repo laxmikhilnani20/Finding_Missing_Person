@@ -65,8 +65,12 @@ class DemoLoader:
                 image_path = self._get_cached_image(name, url)
                 if image_path:
                     available_images[name] = image_path
+                else:
+                    # Fallback: keep direct URL available to UI even if cache fails.
+                    available_images[name] = url
             except Exception as e:
                 print(f"⚠️ Could not load demo image {name}: {e}")
+                available_images[name] = url
         
         return available_images
     
@@ -93,22 +97,47 @@ class DemoLoader:
         try:
             print(f"📥 Downloading demo video: {name}...")
             
-            # Use yt-dlp to download
+            # Preferred: use Python yt_dlp API (works even if yt-dlp binary is missing)
+            try:
+                import yt_dlp
+
+                ydl_opts = {
+                    'format': 'best[ext=mp4]/best',
+                    'outtmpl': cache_path,
+                    'noplaylist': True,
+                    'retries': 3,
+                    'socket_timeout': 30,
+                    'quiet': True,
+                    'no_warnings': True,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([youtube_url])
+
+                if os.path.exists(cache_path):
+                    print(f"✅ Downloaded demo video: {name}")
+                    return cache_path
+            except Exception as api_err:
+                print(f"⚠️ yt_dlp API failed for {name}: {api_err}")
+
+            # Fallback: use yt-dlp CLI if available
             cmd = [
                 'yt-dlp',
-                '-f', 'best[ext=mp4]',  # Best quality MP4
+                '--no-playlist',
+                '--socket-timeout', '30',
+                '--retries', '3',
+                '-f', 'best[ext=mp4]/best',
                 '-o', cache_path,
                 youtube_url
             ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
+
             if result.returncode == 0 and os.path.exists(cache_path):
                 print(f"✅ Downloaded demo video: {name}")
                 return cache_path
-            else:
-                print(f"❌ Failed to download {name}: {result.stderr}")
-                return None
+
+            print(f"❌ Failed to download {name}: {result.stderr}")
+            return None
                 
         except FileNotFoundError:
             print("⚠️ yt-dlp not found. Install with: pip install yt-dlp")
