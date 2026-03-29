@@ -123,6 +123,26 @@ with st.sidebar:
                         st.session_state["mode_selector"] = "Image Upload"
                         st.session_state.pop("active_uploaded_image_bytes", None)
                         st.session_state.pop("active_uploaded_image_name", None)
+
+                        # Auto-register demo image as a person when selected.
+                        base_name = os.path.splitext(os.path.basename(path))[0]
+                        normalized = "".join(ch if ch.isalnum() else "_" for ch in base_name).strip("_")
+                        if not normalized:
+                            normalized = f"demo_image_{idx + 1}"
+
+                        existing_persons = db_manager.get_missing_persons()
+                        candidate_name = normalized
+                        suffix = 1
+                        while candidate_name in existing_persons:
+                            candidate_name = f"{normalized}_{suffix}"
+                            suffix += 1
+
+                        register_path = db_manager.add_missing_person(candidate_name, path)
+                        if register_path:
+                            st.success(f"Registered {candidate_name} from selected demo image")
+                            st.rerun()
+                        else:
+                            st.error("Failed to register selected demo image.")
         else:
             st.caption("No demo images in inputs/")
 
@@ -207,9 +227,10 @@ with st.sidebar:
     persons_dict = db_manager.get_missing_persons()
     if persons_dict:
         st.write("**Registered Profiles**")
-        for pname in persons_dict.keys():
+        for pname, ppath in persons_dict.items():
             c1, c2 = st.columns([4, 1])
             c1.caption(f"👱 {pname}")
+            c1.caption(ppath)
             if c2.button("🗑️", key=f"del_p_{pname}", help="Delete Person"):
                 db_manager.remove_missing_person(pname)
                 st.rerun()
