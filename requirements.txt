@@ -1,5 +1,4 @@
 streamlit
-streamlit-webrtc
 
 # Computer Vision & Face Recognition
 opencv-python-headless
